@@ -1,0 +1,6 @@
+{
+  "openbiomedvid": {
+    "dataset_path": "/projects/cft_vlm/datasets/openbiomedvid",
+    "media_dir": "/projects/cft_vlm/datasets/openbiomedvid/vid_segments"
+  }
+}

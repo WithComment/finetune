@@ -1,0 +1,10 @@
+  0%|          | 0/351 [00:00<?, ?it/s]`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`...
+`loss_type=None` was set in the config but it is unrecognised.Using the default loss: `ForCausalLMLoss`.
+  2%|▏         | 7/351 [03:26<2:33:42, 26.81s/it]
+{'loss': 2.7186, 'grad_norm': 11.707316542523545, 'learning_rate': 0.0, 'epoch': 0.0}
+{'loss': 2.4536, 'grad_norm': 10.283133611614925, 'learning_rate': 1.818181818181818e-08, 'epoch': 0.0}
+{'loss': 2.6497, 'grad_norm': 34.705781189744954, 'learning_rate': 3.636363636363636e-08, 'epoch': 0.0}
+{'loss': 2.4896, 'grad_norm': 6.503261546766797, 'learning_rate': 5.454545454545454e-08, 'epoch': 0.01}
+{'loss': 2.5888, 'grad_norm': 20.94523188223474, 'learning_rate': 7.272727272727273e-08, 'epoch': 0.01}
+{'loss': 2.3684, 'grad_norm': 6.54587771381106, 'learning_rate': 9.09090909090909e-08, 'epoch': 0.01}
+{'loss': 2.45, 'grad_norm': 5.7792674887784585, 'learning_rate': 1.0909090909090908e-07, 'epoch': 0.01}

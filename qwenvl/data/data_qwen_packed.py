@@ -19,7 +19,6 @@ import torch
 from torch.utils.data import Dataset
 from PIL import Image
 from decord import VideoReader
-from torchcodec.decoders import VideoDecoder
 import transformers
 
 from . import data_list
@@ -259,13 +258,6 @@ class LazySupervisedDataset(Dataset):
                 print(f"Decord attempt {decord_attempts + 1} failed: {e}")
                 decord_attempts += 1
 
-        torchcodec_video = None
-        try:
-            torchcodec_video = self.video_torchcodec(video_file)
-            return torchcodec_video
-        except Exception as e:
-            print(f"torchcodec attempt failed: {e}")
-
     def video_decord(self, video_file):
         if not os.path.exists(video_file):
             print(f"File not exist: {video_file}")
@@ -288,26 +280,6 @@ class LazySupervisedDataset(Dataset):
         video = vr.get_batch(frame_idx).asnumpy()
         return self.process_video_frames(video, frame_idx, video_length)
 
-    def video_torchcodec(self, video_file):
-        device = "cpu"  # or e.g. "cuda"
-        decoder = VideoDecoder(video_file, device=device)
-        total_frames = decoder.metadata.num_frames
-        avg_fps = decoder.metadata.average_fps
-        video_length = total_frames / avg_fps
-        interval = getattr(self.data_args, "base_interval", 4)
-
-        num_frames_to_sample = round(video_length / interval)
-        video_min_frames = getattr(self.data_args, "video_min_frames", 4)
-        video_max_frames = getattr(self.data_args, "video_max_frames", 8)
-
-        target_frames = min(
-            max(num_frames_to_sample, video_min_frames), video_max_frames
-        )
-        frame_idx = np.linspace(0, total_frames - 1, target_frames, dtype=int)
-        frame_idx = np.unique(frame_idx)
-        frame_batch = decoder.get_frames_at(indices=frame_idx.tolist())
-        video = frame_batch.data.cpu().numpy()
-        return self.process_video_frames(video, frame_idx, video_length)
 
     def process_video_frames(self, video, frame_idx, video_length):
         fps = len(frame_idx) / video_length

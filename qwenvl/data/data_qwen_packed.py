@@ -1,3 +1,4 @@
+from functools import partial
 import os
 import copy
 import json
@@ -21,6 +22,9 @@ from PIL import Image
 from decord import VideoReader
 import av
 import transformers
+from transformers import AutoProcessor
+
+from qwenvl.common_utils import load_local_dataset, process_video
 
 from . import data_list
 from .rope2d import get_rope_index_25, get_rope_index_2
@@ -39,9 +43,27 @@ def rank0_print(*args):
     print(*args)
 
 
-def read_jsonl(path):
-  with open(path, "r") as f:
-    return [json.loads(line) for line in f]
+def load_datasets(dataset_names: List[str]) -> List[Dict]:
+  dataset_list = data_list(dataset_names)
+  list_data_dict = []
+  for data in dataset_list:
+    annotations = load_local_dataset(data["dataset_path"])
+    sampling_rate = data.get("sampling_rate", 1.0)
+    if sampling_rate < 1.0:
+      annotations = random.sample(
+          annotations, int(len(annotations) * sampling_rate)
+      )
+      rank0_print(f"sampling {len(annotations)} examples from dataset {data}")
+    else:
+      rank0_print(f"dataset name: {data}")
+    for ann in annotations:
+      if isinstance(ann, list):
+        for sub_ann in ann:
+          sub_ann["media_dir"] = data["media_dir"]
+      else:
+        ann["media_dir"] = data["media_dir"]
+    list_data_dict += annotations
+  return list_data_dict
 
 
 def preprocess_qwen_2_visual(
@@ -143,54 +165,33 @@ def preprocess_qwen_2_visual(
 class LazySupervisedDataset(Dataset):
   """Dataset for supervised fine-tuning."""
 
-  def __init__(self, tokenizer: transformers.PreTrainedTokenizer, data_args):
+  def __init__(self, processor: AutoProcessor, data_args):
     super(LazySupervisedDataset, self).__init__()
 
-    dataset = data_args.dataset_use.split(",")
-    dataset_list = data_list(dataset)
-    rank0_print(f"Loading datasets: {dataset_list}")
-    self.video_max_frame_pixels = data_args.video_max_frame_pixels
-    self.video_min_frame_pixels = data_args.video_min_frame_pixels
-    self.model_type = data_args.model_type
-    self.get_rope_index = get_rope_index_25
+    dataset_names = data_args.dataset_use.split(",")
+    rank0_print(f"Loading datasets: {dataset_names}")
     
-    list_data_dict = []
-
-    for data in dataset_list:
-      file_format = data["dataset_path"].split(".")[-1]
-      # Extract this function
-      if file_format == "jsonl":
-        annotations = read_jsonl(data["dataset_path"])
-      else:
-        annotations = json.load(open(data["dataset_path"], "r"))
-      sampling_rate = data.get("sampling_rate", 1.0)
-      if sampling_rate < 1.0:
-        annotations = random.sample(
-            annotations, int(len(annotations) * sampling_rate)
-        )
-        rank0_print(f"sampling {len(annotations)} examples from dataset {data}")
-      else:
-        rank0_print(f"dataset name: {data}")
-      for ann in annotations:
-        if isinstance(ann, list):
-          for sub_ann in ann:
-            sub_ann["media_dir"] = data["media_dir"]
-        else:
-          ann["media_dir"] = data["media_dir"]
-      list_data_dict += annotations
+    list_data_dict = load_datasets(dataset_names)
 
     rank0_print(f"Total training samples: {len(list_data_dict)}")
 
     random.shuffle(list_data_dict)
 
     rank0_print("Formatting inputs...Skip in lazy mode")
-    self.tokenizer = tokenizer
+    self.get_rope_index = get_rope_index_25
     self.list_data_dict = list_data_dict
-    self.data_args = data_args
-    self.data_args.image_processor.max_pixels = data_args.max_pixels
-    self.data_args.image_processor.min_pixels = data_args.min_pixels
-    self.data_args.image_processor.size["longest_edge"] = data_args.max_pixels
-    self.data_args.image_processor.size["shortest_edge"] = data_args.min_pixels
+    self.tokenizer = copy.deepcopy(processor.tokenizer)
+    self.image_processor = copy.deepcopy(processor.image_processor)
+    self.video_processor = copy.deepcopy(processor.video_processor)
+    for attr, val in vars(data_args).items():
+      setattr(self, attr, val)
+    self.process_video = partial(
+        process_video,
+        processor=self.video_processor,
+        base_interval=self.base_interval,
+        min_frames=self.video_min_frames,
+        max_frames=self.video_max_frames,
+    )
 
   def __len__(self):
     return len(self.list_data_dict)
@@ -229,7 +230,7 @@ class LazySupervisedDataset(Dataset):
       return np.array([1] * len(self.list_data_dict))
 
   def process_image_unified(self, image_file):
-    processor = copy.deepcopy(self.data_args.image_processor)
+    processor = copy.deepcopy(self.image_processor)
     image = Image.open(image_file).convert("RGB")
 
     visual_processed = processor.preprocess(image, return_tensors="pt")
@@ -239,120 +240,6 @@ class LazySupervisedDataset(Dataset):
     grid_thw = visual_processed["image_grid_thw"][0]
     return image_tensor, grid_thw
 
-  def process_video(self, video_file):
-    decord_video = None
-    decord_attempts = 0
-    max_decord_attempts = 3
-    while decord_attempts < max_decord_attempts:
-      try:
-        decord_video = self.video_decord(video_file)
-        return decord_video
-      except Exception as e:
-        print(f"Decord attempt {decord_attempts + 1} failed: {e}")
-        decord_attempts += 1
-
-    # Fallback to av-based processing
-    try:
-      # Keep the name for compatibility
-      av_video = self.video_torchcodec(video_file)
-      return av_video
-    except Exception as e:
-      print(f"av processing attempt failed: {e}")
-      raise e
-
-  def video_decord(self, video_file):
-    if not os.path.exists(video_file):
-      print(f"File not exist: {video_file}")
-      return None
-    vr = VideoReader(video_file, num_threads=4)
-    total_frames = len(vr)
-    avg_fps = vr.get_avg_fps()
-    video_length = total_frames / avg_fps
-    interval = getattr(self.data_args, "base_interval", 4)
-
-    num_frames_to_sample = round(video_length / interval)
-    video_min_frames = getattr(self.data_args, "video_min_frames", 4)
-    video_max_frames = getattr(self.data_args, "video_max_frames", 8)
-
-    target_frames = min(
-        max(num_frames_to_sample, video_min_frames), video_max_frames
-    )
-    frame_idx = np.linspace(0, total_frames - 1, target_frames, dtype=int)
-    frame_idx = np.unique(frame_idx)
-    video = vr.get_batch(frame_idx).asnumpy()
-    return self.process_video_frames(video, frame_idx, video_length)
-
-  def video_torchcodec(self, video_file):
-    """Process video using av library instead of torchcodec"""
-    try:
-      # Read video file into memory
-      with open(video_file, 'rb') as f:
-        video_data = f.read()
-
-      # Use av to process the video
-      frames = []
-      with av.open(BytesIO(video_data)) as container:
-        video_stream = container.streams.video[0]
-        total_frames = video_stream.frames
-        avg_fps = float(video_stream.average_rate)
-        video_length = total_frames / avg_fps
-
-        interval = getattr(self.data_args, "base_interval", 4)
-        num_frames_to_sample = round(video_length / interval)
-        video_min_frames = getattr(self.data_args, "video_min_frames", 4)
-        video_max_frames = getattr(self.data_args, "video_max_frames", 8)
-
-        target_frames = min(
-            max(num_frames_to_sample, video_min_frames), video_max_frames
-        )
-
-        # Calculate frame indices to sample
-        frame_idx = np.linspace(0, total_frames - 1, target_frames, dtype=int)
-        frame_idx = np.unique(frame_idx)
-
-        # Extract frames at specified indices
-        frame_set = set(frame_idx)
-        current_frame = 0
-
-        for frame in container.decode(video=0):
-          if current_frame in frame_set:
-            # Convert frame to RGB numpy array
-            frame_rgb = frame.to_rgb().to_ndarray()
-            frames.append(frame_rgb)
-
-            # Stop if we've collected all required frames
-            if len(frames) >= len(frame_idx):
-              break
-
-          current_frame += 1
-
-      # Convert to numpy array with shape (frames, height, width, channels)
-      video = np.array(frames)
-
-      return self.process_video_frames(video, frame_idx, video_length)
-
-    except Exception as e:
-      print(f"Error processing video with av: {e}")
-      raise e
-
-  def process_video_frames(self, video, frame_idx, video_length):
-    fps = len(frame_idx) / video_length
-    # Use video_processor instead of image_processor for videos
-    processor = copy.deepcopy(self.data_args.video_processor)
-    processor.max_pixels = self.data_args.video_max_frame_pixels
-    processor.min_pixels = self.data_args.video_min_frame_pixels
-    processor.size["longest_edge"] = processor.max_pixels
-    processor.size["shortest_edge"] = processor.min_pixels
-    video_processed = processor.preprocess(
-        videos=video, return_tensors="pt"
-    )
-    video_tensor = video_processed["pixel_values_videos"]
-    grid_thw = video_processed["video_grid_thw"][0]
-    # Use video_processor.temporal_patch_size instead of image_processor
-    second_per_grid_ts = [
-        processor.temporal_patch_size / fps
-    ] * len(grid_thw)
-    return video_tensor, grid_thw, second_per_grid_ts
 
   def __getitem__(self, i) -> Dict[str, torch.Tensor]:
     num_base_retries = 3
@@ -422,7 +309,7 @@ class LazySupervisedDataset(Dataset):
         grid_thw_merged = [grid_thw_merged]
         grid_thw = [grid_thw]
       grid_thw_merged = [
-          merged_thw.prod() // self.data_args.image_processor.merge_size**2
+          merged_thw.prod() // self.image_processor.merge_size**2
           for merged_thw in grid_thw_merged
       ]
     if "video" in sources[0]:
@@ -453,7 +340,7 @@ class LazySupervisedDataset(Dataset):
         video_grid_thw_merged = [video_grid_thw_merged]
         video_grid_thw = [video_grid_thw]
       video_grid_thw_merged = [
-          merged_thw.prod() // self.data_args.video_processor.merge_size**2
+          merged_thw.prod() // self.video_processor.merge_size**2
           for merged_thw in video_grid_thw_merged
       ]
     chat_sources = copy.deepcopy([e["conversations"] for e in sources])
@@ -464,7 +351,7 @@ class LazySupervisedDataset(Dataset):
         grid_thw_video=video_grid_thw_merged if video_grid_thw_merged else None,
     )
     position_ids, _ = self.get_rope_index(
-        self.data_args.image_processor.merge_size,
+        self.image_processor.merge_size,
         data_dict["input_ids"],
         image_grid_thw=torch.stack(grid_thw, dim=0) if grid_thw else None,
         video_grid_thw=(
@@ -640,12 +527,12 @@ class PackedDataCollatorForSupervisedDataset(object):
 
 
 def make_supervised_data_module_packed(
-    tokenizer: transformers.PreTrainedTokenizer, data_args
+    processor: AutoProcessor, data_args
 ) -> Dict:
   """Make dataset and collator for supervised fine-tuning."""
   train_dataset = LazySupervisedDataset(
-      tokenizer=tokenizer, data_args=data_args)
-  data_collator = PackedDataCollatorForSupervisedDataset(tokenizer=tokenizer)
+      processor=processor, data_args=data_args)
+  data_collator = PackedDataCollatorForSupervisedDataset(tokenizer=processor.tokenizer)
   return dict(
       train_dataset=train_dataset, eval_dataset=None, data_collator=data_collator
   )

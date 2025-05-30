@@ -1,5 +1,5 @@
 import re
-
+from pathlib import Path
 
 def parse_sampling_rate(dataset_name):
   match = re.search(r"%(\d+)$", dataset_name)
@@ -9,7 +9,8 @@ def parse_sampling_rate(dataset_name):
 
 
 def data_list(dataset_names):
-  with open('datasets.json', 'r') as f:
+  ds_path = Path(__file__).parent / 'datasets.json'
+  with open(ds_path, 'r') as f:
     import json
     data_dict = json.load(f)
     

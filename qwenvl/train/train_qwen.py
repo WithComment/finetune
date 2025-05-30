@@ -14,35 +14,28 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from transformers import AutoTokenizer, AutoProcessor, Qwen2VLImageProcessor, Qwen2_5_VLVideoProcessor, Trainer
-from qwenvl.train.argument import (
+from transformers import AutoProcessor, Trainer
+from argument import (
     ModelArguments,
     DataArguments,
     TrainingArguments,
 )
-from qwenvl.data.data_qwen_packed import make_supervised_data_module_packed
-from qwenvl.data.data_qwen import make_supervised_data_module
 from transformers import (
-    Qwen2VLForConditionalGeneration,
     Qwen2_5_VLForConditionalGeneration,
 )
 from trainer import replace_qwen2_vl_attention_class
-import qwenvl.train.trainer
 import os
 import logging
 import pathlib
 import torch
 import transformers
-import json
-from typing import Dict
-import shutil
 import sys
 from pathlib import Path
 
 project_root = Path(__file__).parent.parent.parent
 sys.path.append(str(project_root))
 
-
+from qwenvl.data.data_qwen_packed import make_supervised_data_module_packed
 local_rank = None
 
 
@@ -92,6 +85,16 @@ def set_model(model_args, model):
     model.lm_head.requires_grad = False
 
 
+def set_processor(data_args, processor):
+  """Set the processor parameters based on data_args."""
+  # TODO: add shortest_edge if needed.
+  img_processor = processor.image_processor
+  vid_processor = processor.video_processor
+  img_processor.max_pixels = data_args.max_pixels
+  img_processor.min_pixels = data_args.min_pixels
+  vid_processor.max_frame_pixels = data_args.video_max_frame_pixels
+  vid_processor.min_frame_pixels = data_args.video_min_frame_pixels
+
 def train(attn_implementation="flash_attention_2"):
   global local_rank
 
@@ -111,10 +114,6 @@ def train(attn_implementation="flash_attention_2"):
   )
   processor = AutoProcessor.from_pretrained(
       model_args.model_name_or_path)
-  data_args.model_type = "qwen2.5vl"
-    
-  data_args.image_processor = Qwen2VLImageProcessor.from_pretrained(model_args.model_name_or_path)
-  data_args.video_processor = Qwen2_5_VLVideoProcessor.from_pretrained(model_args.model_name_or_path)
 
   if data_args.data_flatten:
     replace_qwen2_vl_attention_class()
@@ -142,12 +141,9 @@ def train(attn_implementation="flash_attention_2"):
     model.visual.print_trainable_parameters()
     model.model.print_trainable_parameters()
 
-  if data_args.data_packing:
-    data_module = make_supervised_data_module_packed(
-        tokenizer=tokenizer, data_args=data_args)
-  else:
-    data_module = make_supervised_data_module(
-        tokenizer=tokenizer, data_args=data_args)
+  data_module = make_supervised_data_module_packed(
+      processor, data_args=data_args)
+  
   trainer = Trainer(
       model=model, processing_class=tokenizer, args=training_args, **data_module
   )

@@ -67,6 +67,7 @@ mkdir -p ${cache_dir}
 
 # Training arguments
 args="
+    --dataset_packing True \
     --deepspeed ${deepspeed} \
     --model_name_or_path ${llm} \
     --dataset_use ${datasets} \
@@ -94,7 +95,7 @@ args="
     --max_grad_norm 1 \
     --lr_scheduler_type cosine \
     --logging_steps 1 \
-    --model_max_length 8192 \
+    --model_max_length 4096 \
     --gradient_checkpointing True \
     --dataloader_num_workers 4 \
     --run_name ${run_name} \

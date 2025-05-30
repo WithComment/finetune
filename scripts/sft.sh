@@ -67,7 +67,7 @@ mkdir -p ${cache_dir}
 
 # Training arguments
 args="
-    --dataset_packing True \
+    --data_packing True \
     --deepspeed ${deepspeed} \
     --model_name_or_path ${llm} \
     --dataset_use ${datasets} \
@@ -77,7 +77,7 @@ args="
     --tune_mm_llm True \
     --bf16 \
     --output_dir ${output_dir} \
-    --num_train_epochs 0.001 \
+    --num_train_epochs 0.0001 \
     --per_device_train_batch_size ${batch_size} \
     --per_device_eval_batch_size $((batch_size*2)) \
     --gradient_accumulation_steps ${grad_accum_steps} \
@@ -95,7 +95,7 @@ args="
     --max_grad_norm 1 \
     --lr_scheduler_type cosine \
     --logging_steps 1 \
-    --model_max_length 4096 \
+    --model_max_length 8192 \
     --gradient_checkpointing True \
     --dataloader_num_workers 4 \
     --run_name ${run_name} \

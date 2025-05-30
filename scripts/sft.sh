@@ -77,7 +77,7 @@ args="
     --tune_mm_llm True \
     --bf16 \
     --output_dir ${output_dir} \
-    --num_train_epochs 0.5 \
+    --num_train_epochs 0.001 \
     --per_device_train_batch_size ${batch_size} \
     --per_device_eval_batch_size $((batch_size*2)) \
     --gradient_accumulation_steps ${grad_accum_steps} \
@@ -102,7 +102,7 @@ args="
     --report_to wandb"
 
 # Launch training with srun (SLURM's torchrun equivalent)
-srun torchrun --nproc_per_node=${NPROC_PER_NODE} \
+torchrun --nproc_per_node=${NPROC_PER_NODE} \
               --master_addr=${MASTER_ADDR} \
               --master_port=${MASTER_PORT} \
               ${entry_file} ${args}

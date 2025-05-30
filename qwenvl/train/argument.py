@@ -17,7 +17,7 @@ class DataArguments:
     video_min_frames: Optional[int] = field(default=4)
     data_flatten: bool = field(default=False)
     data_packing: bool = field(default=False)
-    base_interval: int = field(default=1)
+    base_interval: int = field(default=2)
     max_pixels: int = field(default=28 * 28 * 576)
     min_pixels: int = field(default=28 * 28 * 16)
     video_max_frame_pixels: int = field(default=32 * 28 * 28)

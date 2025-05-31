@@ -2,5 +2,9 @@
   "openbiomedvid": {
     "dataset_path": "/projects/cft_vlm/openbiomedvid/processed_for_qwen_new.jsonl",
     "media_dir": "/projects/cft_vlm/openbiomedvid/vid_processed"
+  },
+  "openbiomedvid_old": {
+    "dataset_path": "/projects/cft_vlm/openbiomedvid/processed_for_qwen_old.jsonl",
+    "media_dir": "/projects/cft_vlm/openbiomedvid/vid_processed"
   }
 }

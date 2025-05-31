@@ -181,14 +181,30 @@ def get_image(image):
 def make_labels(
     input_ids: torch.Tensor,
     tokenizer: PreTrainedTokenizer,
-    ignore_idx: int = -100
+    ignore_idx: int = -100,
+    assistant_start: str = "<|im_start|>assistant\n",
+    assistant_end: str = "<|im_end|>"
 ) -> torch.Tensor:
-  labels = input_ids.clone()
-  special_ids = set(tokenizer.all_special_ids)
-  for i in range(input_ids.shape[0]):
-    for j in range(input_ids.shape[1]):
-      if input_ids[i, j] in special_ids:
-        labels[i, j] = ignore_idx
+
+  ignore_idx = -100
+  assistant_start = "<|im_start|>assistant\n"
+  assistant_end = "<|im_end|>"
+  labels = torch.ones_like(input_ids) * ignore_idx
+  a_start_ids = tokenizer.encode(assistant_start, return_tensors='pt')[0]
+  a_end_ids = tokenizer.encode(assistant_end, return_tensors='pt')[0]
+  assert len(a_end_ids) == 1
+  a_end_idx = list(zip(*torch.where(input_ids == a_end_ids[0])))
+  a_start_idx = list(zip(*torch.where(input_ids == a_start_ids[0])))
+
+  assert len(a_start_idx) == len(a_end_idx)
+  for (batch_idx, start_idx), (batch_idx, end_idx) in zip(a_start_idx, a_end_idx):
+    assert batch_idx == batch_idx, "Batch indices do not match"
+    assert start_idx < end_idx, "Start index must be less than end index"
+    start_end_idx = start_idx + len(a_start_ids)
+    if torch.equal(input_ids[batch_idx, start_idx:start_end_idx], a_start_ids):
+      end_idx += 1 # Adjust end index to include the end token
+      labels[batch_idx, start_end_idx + 1:end_idx] = input_ids[batch_idx, start_end_idx + 1:end_idx]
+      
   return labels
 
 
@@ -219,7 +235,8 @@ def make_model_input(
     base_interval,
     video_min_frames,
     video_max_frames,
-    add_generation_prompt=True
+    add_generation_prompt=True,
+    padding_side='right',
 ):
     
   image_inputs, video_inputs, fpss = get_batch_images_and_videos(
@@ -235,7 +252,7 @@ def make_model_input(
       fps=fpss if fpss else None,
       return_tensors="pt",
       padding=True,
-      padding_side='left'
+      padding_side=padding_side
   )
   data_dict['labels'] = make_labels(
     data_dict['input_ids'],

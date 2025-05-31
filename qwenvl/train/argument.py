@@ -36,3 +36,25 @@ class TrainingArguments(transformers.TrainingArguments):
     )
     mm_projector_lr: Optional[float] = None
     vision_tower_lr: Optional[float] = None
+    
+
+pixel_per_token = 28 * 28
+
+@dataclass
+class ImageProcessorArguments:
+  min_pixels: int = field(default=pixel_per_token * 16)
+  max_pixels: int = field(default=pixel_per_token * 576)
+
+
+@dataclass
+class VideoProcessorArguments:
+  video_min_pixels: int = field(default=pixel_per_token * 4)
+  video_max_pixels: int = field(default=pixel_per_token * 196)
+  default_to_square: bool = field(default=False)
+  
+  
+@dataclass
+class VideoProcessingArguments:
+  video_max_frames: int = field(default=8)
+  video_min_frames: int = field(default=4)
+  base_interval: int = field(default=2)

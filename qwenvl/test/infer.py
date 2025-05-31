@@ -1,4 +1,7 @@
+import base64
 from copy import deepcopy
+from io import BytesIO
+from pathlib import Path
 import sys
 import argparse
 import time
@@ -17,8 +20,14 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DistributedSampler, DataLoader
 
+
 logger = logging.getLogger(__name__)
 
+
+project_root = Path(__file__).parent.parent.parent
+sys.path.append(str(project_root))
+
+from qwenvl.common_utils import get_images_and_videos, get_video_frames
 
 def setup_distributed():
   """Initialize distributed training."""
@@ -62,10 +71,10 @@ def make_question(
   `
   """
   q = item['question']
-  media_list = item.get('media', [])
   content = list()
-  for media in media_list:
+  for media in item.get('media', []):
     if not isinstance(media, str) or media.startswith('data:image;base64'):
+      # Base64 or PIL.Image.Image
       content.append({"type": "image", "image": media})
     elif media.endswith('mp4'):
       content.append({"type": "video", "video": os.path.join(media_dir, media)})
@@ -96,7 +105,7 @@ def make_question(
 def load_benchmark(
     benchmark: str,
 ) -> tuple[Dataset, str, str]:
-  with open('benchmarks.json', 'r') as f:
+  with open('qwenvl/data/benchmarks.json', 'r') as f:
     benchmarks = json.load(f)
   benchmark = benchmarks[benchmark]
   ds_path = benchmark['dataset_path']
@@ -133,30 +142,36 @@ def log_header(
   logger.info(f"Model: {model}")
   logger.info(f"Using model checkpoint: {model_checkpoint}")
   logger.info(f"Total samples: {len_dataset}")
-  logger.info(f"Samples per GPU: ~{len_gpu_dataset}")
-  
+  logger.info(f"Samples per GPU: ~{len_gpu_dataset}")  
+
   
 def _infer(
     model,
     dataset: Dataset,
     local_rank: int,
     processor: AutoProcessor,
-    data_dir: str,
+    media_dir: str,
     max_new_tokens: int,
     temperature: float,
 ) -> list[dict]:
   result = []
   for i, item in enumerate(tqdm(dataset, disable=local_rank != 0)):
     item = deepcopy(item)
-    question, text = make_question(item, processor, data_dir)
-    image_inputs, video_inputs = process_vision_info(question)
+    question, text = make_question(item, processor, media_dir)
+    image_inputs, video_inputs = get_images_and_videos(
+        question, base_interval=None, min_frames=None, max_frames=None
+    )
+    
+    image_inputs = image_inputs if image_inputs else None
+    video_inputs = video_inputs if video_inputs else None
+    
     inputs = processor(
-        text=[text],
-        images=image_inputs,
-        videos=video_inputs,
-        return_tensors="pt"
+      text=[text],
+      images=image_inputs,
+      videos=video_inputs,
+      return_tensors="pt",
     ).to(model.device)
-
+    
     with torch.no_grad():
       output_ids = model.generate(
           **inputs,
@@ -280,7 +295,7 @@ def main(
       temperature
   )
   output_dir = os.path.join(
-    os.environ['BENCHMARK_DIR'], benchmark, 'output', model_path.split('/')[-1])
+    os.environ['BENCHMARKS_DIR'], benchmark, 'output', model_path.split('/')[-1])
   os.makedirs(output_dir, exist_ok=True)
   save_gpu_result(gpu_result, local_rank, output_dir)
   

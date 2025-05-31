@@ -1,18 +1,29 @@
 import copy
+from functools import partial
 import json
 import os
+import random
 import datasets
 from decord import VideoReader
 import numpy as np
+from PIL import Image
+
+import torch
 
 from qwenvl.data import data_list
 
 from transformers import PreTrainedTokenizer
 
-
+import base64
+from io import BytesIO
 def read_jsonl(path):
   with open(path, "r") as f:
     return [json.loads(line) for line in f]
+
+
+def rank0_print(rank, *args, **kwargs):
+  if rank == 0:
+    print(*args, **kwargs)
 
 
 def load_local_dataset(
@@ -30,99 +41,25 @@ def load_local_dataset(
     return datasets.load_from_disk(dataset_path)
 
 
-def preprocess_qwen_2_visual(
-    sources,
-    tokenizer: PreTrainedTokenizer,
-    grid_thw_image: list = [],
-    grid_thw_video: list = [],
-) -> dict:
-  roles = {"human": "user", "gpt": "assistant"}
-  system_message = "You are a helpful assistant."
+def load_datasets(
+    dataset_names: list[str],
+    rank=0,
+) -> list[dict]:
+  list_data_dict = []
 
-  tokenizer = copy.deepcopy(tokenizer)
-  
-  visual_replicate_index_image = 0
-  visual_replicate_index_video = 0
-  input_ids, targets = [], []
-
-  for i, source in enumerate(sources):
-    try:
-      if roles[source[0]["from"]] != roles["human"]:
-        source = source[1:]
-    except:
-      print(sources)
-
-    input_id, target = [], []
-
-    input_id += tokenizer.apply_chat_template(
-        [{"role": "system", "content": system_message}]
+  dataset_list = data_list(dataset_names)
+  rank0_print(rank, f"Loading datasets: {dataset_list}")
+  for data in dataset_list:
+    annotations = load_local_dataset(data["dataset_path"])
+    sampling_rate = data['sampling_rate']
+    annotations = random.sample(
+        annotations, int(len(annotations) * sampling_rate)
     )
-    target += [IGNORE_INDEX] * len(input_id)
+    rank0_print(
+        rank, f"sampling {len(annotations)} examples from dataset {data}")
+    list_data_dict += annotations
+  return list_data_dict
 
-    for conv in source:
-      try:
-        role = conv["role"]
-        content = conv["content"]
-      except:
-        role = conv["from"]
-        content = conv["value"]
-
-      role = roles.get(role, role)
-      if role == "user":
-        if "<image>" in content:
-          parts = content.split("<image>")
-          new_parts = []
-          for i in range(len(parts) - 1):
-            new_parts.append(parts[i])
-            replacement = (
-                "<|vision_start|>"
-                + f"<|image_pad|>"
-                * grid_thw_image[visual_replicate_index_image]
-                + "<|vision_end|>"
-            )
-            new_parts.append(replacement)
-            visual_replicate_index_image += 1
-          new_parts.append(parts[-1])
-          content = "".join(new_parts)
-
-        if "<video>" in content:
-          parts = content.split("<video>")
-          new_parts = []
-          for i in range(len(parts) - 1):
-            new_parts.append(parts[i])
-            replacement = (
-                "<|vision_start|>"
-                + f"<|video_pad|>"
-                * grid_thw_video[visual_replicate_index_video]
-                + "<|vision_end|>"
-            )
-            new_parts.append(replacement)
-            visual_replicate_index_video += 1
-          new_parts.append(parts[-1])
-          content = "".join(new_parts)
-
-      conv = [{"role": role, "content": content}]
-      encode_id = tokenizer.apply_chat_template(conv)
-      input_id += encode_id
-      if role in ["user", "system"]:
-        target += [IGNORE_INDEX] * len(encode_id)
-      else:
-        target_mask = encode_id.copy()
-        target_mask[:3] = [IGNORE_INDEX] * 3
-        target += target_mask
-
-    assert len(input_id) == len(target), f"{len(input_id)} != {len(target)}"
-    input_ids.append(input_id)
-    targets.append(target)
-
-  input_ids = torch.tensor(input_ids, dtype=torch.long)
-  targets = torch.tensor(targets, dtype=torch.long)
-
-  return dict(
-      input_ids=input_ids,
-      labels=targets,
-  )
-  
 
 def get_video_frames(
     video_file_path,
@@ -136,20 +73,23 @@ def get_video_frames(
   vr = VideoReader(video_file_path, num_threads=4)
   total_frames = len(vr)
   avg_fps = vr.get_avg_fps()
+  
+  if not (base_interval and min_frames and max_frames):
+    return vr.get_batch(range(total_frames)).asnumpy(), avg_fps
+  
   video_length = total_frames / avg_fps
   num_frames_to_sample = round(video_length / base_interval)
 
   target_frames = min(
       max(num_frames_to_sample, min_frames), max_frames
   )
-  
+
   frame_idx = np.linspace(0, total_frames - 1, target_frames, dtype=int)
   video = vr.get_batch(frame_idx).asnumpy()
   return video, target_frames / video_length
 
 
 def process_video_frames(processor, video, fps):
-  processor = copy.deepcopy(processor)
   video_processed = processor.preprocess(
       videos=video, return_tensors="pt"
   )
@@ -173,3 +113,132 @@ def process_video(
   )
 
   return process_video_frames(processor, video_frames, fps)
+
+
+def process_image(
+    image_file_path,
+    processor
+) -> tuple:
+  image = Image.open(image_file_path).convert("RGB")
+  visual_processed = processor.preprocess(image, return_tensors="pt")
+  image_tensor = visual_processed["pixel_values"]
+  if isinstance(image_tensor, list):
+    image_tensor = image_tensor[0]
+  grid_thw = visual_processed["image_grid_thw"][0]
+  return image_tensor, grid_thw
+
+
+def get_images_and_videos(
+    conversation: list[dict],
+    base_interval: int,
+    min_frames: int,
+    max_frames: int,
+) -> tuple[list[str], list[str]]:
+  """Conversation should be like 
+  [
+      {
+          "role": "user",
+          "content": [
+              {"type": "text", "text": "What is this?"},
+              {"type": "image", "image": "/absolute/path/to/image1.jpg" | PIL.Image.Image | Base64 string},
+              {"type": "video", "video": "/absolute/path/to/video1.mp4"}
+          ]
+      },
+      ...
+  ]
+  """
+  images = list()
+  videos = list()
+  fpss = list()
+  for message in conversation:
+    if message['role'] == 'system':
+      continue
+    for content in message['content']:
+      if content['type'] == 'image':
+        images.append(get_image(content['image']))
+      elif content['type'] == 'video':
+        frames, fps = get_video_frames(
+          content['video'],
+          base_interval=base_interval,
+          min_frames=min_frames,
+          max_frames=max_frames
+        )
+        videos.append(frames)
+        fpss.append(fps)
+  return (images, videos, fpss)
+
+
+def get_image(image):
+  if isinstance(image, Image.Image):
+    return image.convert("RGB")
+  if isinstance(image, str) and image.startswith("data:image"):
+    image_data = base64.b64decode(image.split(",")[1])
+    return Image.open(BytesIO(image_data)).convert("RGB")
+  if isinstance(image, str) and os.path.exists(image):
+    return Image.open(image).convert("RGB")
+
+
+def make_labels(
+    input_ids: torch.Tensor,
+    tokenizer: PreTrainedTokenizer,
+    ignore_idx: int = -100
+) -> torch.Tensor:
+  labels = input_ids.clone()
+  special_ids = set(tokenizer.all_special_ids)
+  for i in range(input_ids.shape[0]):
+    for j in range(input_ids.shape[1]):
+      if input_ids[i, j] in special_ids:
+        labels[i, j] = ignore_idx
+  return labels
+
+
+def get_batch_images_and_videos(
+    conversations,
+    base_interval,
+    min_frames,
+    max_frames,
+) -> tuple[list[str], list[str]]:
+  images = list()
+  videos = list()
+  fpss = list()
+  if isinstance(conversations[0], dict):
+    conversations = [conversations]
+  for conversation in conversations:
+    imgs, vids, fps = get_images_and_videos(
+        conversation, base_interval, min_frames, max_frames
+    )
+    images.extend(imgs)
+    videos.extend(vids)
+    fpss.extend(fps)
+  return images, videos, fpss
+
+
+def make_model_input(
+    conversations,
+    processor,
+    base_interval,
+    video_min_frames,
+    video_max_frames,
+    add_generation_prompt=True
+):
+    
+  image_inputs, video_inputs, fpss = get_batch_images_and_videos(
+      conversations, base_interval, video_min_frames, video_max_frames
+  )
+  text = processor.apply_chat_template(
+      conversations, add_generation_prompt=add_generation_prompt, tokenize=False
+  )
+  data_dict = processor(
+      text=text,
+      images=image_inputs if image_inputs else None,
+      videos=video_inputs if video_inputs else None,
+      fps=fpss if fpss else None,
+      return_tensors="pt",
+      padding=True,
+      padding_side='left'
+  )
+  data_dict['labels'] = make_labels(
+    data_dict['input_ids'],
+    processor.tokenizer
+  )
+  return data_dict

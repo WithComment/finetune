@@ -1,6 +1,6 @@
 {
   "openbiomedvid": {
-    "dataset_path": "/projects/cft_vlm/openbiomedvid/processed_for_qwen_finetune_pack.jsonl",
+    "dataset_path": "/projects/cft_vlm/openbiomedvid/processed_for_qwen_new.jsonl",
     "media_dir": "/projects/cft_vlm/openbiomedvid/vid_processed"
   }
 }

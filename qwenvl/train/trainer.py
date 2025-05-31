@@ -71,6 +71,11 @@ def _flash_attention_forward(
       deterministic (`bool`, *optional*):
           Determines if the deterministic option introduced in flash_attn>=2.4.1 is enabled.
   """
+  assert query_states.size(0) == key_states.size(
+      0) == value_states.size(0) == 1
+  query_states = query_states.squeeze(0)
+  key_states = key_states.squeeze(0)
+  value_states = value_states.squeeze(0)
   cu_seqlens = attention_mask
 
   with torch.no_grad():
@@ -106,6 +111,11 @@ def _flash_attention_forward(
       causal=causal,
       **flash_kwargs,
   )
+
+  attn_output = attn_output.unsqueeze(0)
+  query_states = query_states.unsqueeze(0)
+  key_states = key_states.unsqueeze(0)
+  value_states = value_states.unsqueeze(0)
 
   return attn_output
 

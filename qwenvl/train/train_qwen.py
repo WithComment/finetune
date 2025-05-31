@@ -102,7 +102,6 @@ def train(attn_implementation="flash_attention_2"):
       (ModelArguments, DataArguments, TrainingArguments)
   )
   model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-
   local_rank = training_args.local_rank
   os.makedirs(training_args.output_dir, exist_ok=True)
 
@@ -171,13 +170,13 @@ def train(attn_implementation="flash_attention_2"):
     trainer.train(resume_from_checkpoint=True)
   else:
     trainer.train()
-  trainer.save_state()
-  data_args.image_processor.save_pretrained(training_args.output_dir)
+  # trainer.save_state()
+  # data_args.image_processor.save_pretrained(training_args.output_dir)
 
-  model.config.use_cache = True
+  # model.config.use_cache = True
 
-  safe_save_model_for_hf_trainer(
-      trainer=trainer, output_dir=training_args.output_dir)
+  # safe_save_model_for_hf_trainer(
+  #     trainer=trainer, output_dir=training_args.output_dir)
 
 
 if __name__ == "__main__":

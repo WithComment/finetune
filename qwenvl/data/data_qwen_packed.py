@@ -96,6 +96,7 @@ class LazySupervisedDataset(Dataset):
     
 
   def __getitem__(self, i) -> Dict[str, torch.Tensor]:
+    return self.list_data_dict[i]['conversation']
     return self.get_data(i)
 
   def get_data(self, i) -> Dict[str, torch.Tensor]:
@@ -113,15 +114,19 @@ class LazySupervisedDataset(Dataset):
 class PackedDataCollatorForSupervisedDataset(object):
   """Collate examples into packed sequence with multi-modal support."""
   processor: transformers.PreTrainedTokenizer
+  base_interval: int = 2
+  video_min_frames: int = 4
+  video_max_frames: int = 8
   
   def __call__(self, instances: Sequence[Dict]) -> Dict[str, torch.Tensor]:
-    batch = instances[0]
-    batch['attention_mask'] = torch.nn.functional.pad(
-      batch['attention_mask'].sum(dim=1).cumsum(0),
-      (1, 0)
-    ).to(torch.int32)
-
-    return batch
+    return make_model_input(
+      instances,
+      self.processor,
+      self.base_interval,
+      self.video_min_frames,
+      self.video_max_frames,
+      add_generation_prompt=False,
+    )
 
 
 def make_supervised_data_module_packed(

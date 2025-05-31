@@ -163,11 +163,11 @@ class LazySupervisedDataset(Dataset):
         list_data_dict = []
 
         for data in dataset_list:
-            file_format = data["annotation_path"].split(".")[-1]
+            file_format = data["dataset_path"].split(".")[-1]
             if file_format == "jsonl":
-                annotations = read_jsonl(data["annotation_path"])
+                annotations = read_jsonl(data["dataset_path"])
             else:
-                annotations = json.load(open(data["annotation_path"], "r"))
+                annotations = json.load(open(data["dataset_path"], "r"))
             sampling_rate = data.get("sampling_rate", 1.0)
             if sampling_rate < 1.0:
                 annotations = random.sample(
@@ -177,7 +177,7 @@ class LazySupervisedDataset(Dataset):
             else:
                 rank0_print(f"dataset name: {data}")
             for ann in annotations:
-                ann["data_path"] = data["data_path"]
+                ann["data_path"] = data["media_dir"]
             list_data_dict += annotations
 
         rank0_print(f"Total training samples: {len(list_data_dict)}")

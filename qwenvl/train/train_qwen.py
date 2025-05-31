@@ -158,9 +158,12 @@ def train(attn_implementation="flash_attention_2"):
   if torch.distributed.get_rank() == 0:
     model.visual.print_trainable_parameters()
     model.model.print_trainable_parameters()
+    
+  if data_args.data_packing:
+      data_module = make_supervised_data_module_packed(processor=processor, data_args=data_args)
+  else:
+      data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
 
-  data_module = make_supervised_data_module_packed(
-      processor=processor, data_args=data_args)
   trainer = Trainer(
       model=model, processing_class=tokenizer, args=training_args, **data_module
   )
@@ -186,4 +189,5 @@ if __name__ == "__main__":
       TrainingArguments,
   )
   from qwenvl.data.data_qwen_packed import make_supervised_data_module_packed
+  from qwenvl.data.data_qwen import make_supervised_data_module
   train(attn_implementation="flash_attention_2")

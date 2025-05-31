@@ -47,7 +47,7 @@ llm=Qwen/Qwen2.5-VL-3B-Instruct
 
 # Training hyperparameters
 lr=2e-7
-batch_size=1  # Reduced for 4 GPUs
+batch_size=2  # Reduced for 4 GPUs
 grad_accum_steps=8  # Increased to maintain effective batch size
 
 # Training entry point
@@ -71,7 +71,7 @@ args="
     --deepspeed ${deepspeed} \
     --model_name_or_path ${llm} \
     --dataset_use ${datasets} \
-    --data_flatten True \
+    --data_flatten False \
     --tune_mm_vision False \
     --tune_mm_mlp True \
     --tune_mm_llm True \

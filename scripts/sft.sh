@@ -47,7 +47,7 @@ llm=Qwen/Qwen2.5-VL-3B-Instruct
 
 # Training hyperparameters
 lr=2e-7
-batch_size=1  # Reduced for 4 GPUs
+batch_size=2  # Reduced for 4 GPUs
 grad_accum_steps=8  # Increased to maintain effective batch size
 
 # Training entry point

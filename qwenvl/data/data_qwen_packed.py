@@ -128,7 +128,7 @@ class PackedDataCollatorForSupervisedDataset(object):
     return batch
 
 
-def new_make_supervised_data_module_packed(
+def make_supervised_data_module_packed(
     processor: transformers.AutoProcessor, data_args
 ) -> Dict:
   """Make dataset and collator for supervised fine-tuning."""

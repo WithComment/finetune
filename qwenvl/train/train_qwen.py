@@ -14,30 +14,37 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import copy
-from transformers import AutoTokenizer, AutoProcessor, Qwen2VLImageProcessor, Trainer
-
-from transformers import (
-    Qwen2VLForConditionalGeneration,
-    Qwen2_5_VLForConditionalGeneration,
-)
-from trainer import replace_qwen2_vl_attention_class
-import os
-import logging
-import pathlib
-import torch
-import transformers
-import json
-from typing import Dict
-import shutil
 import sys
 from pathlib import Path
+
 
 project_root = Path(__file__).parent.parent.parent
 sys.path.append(str(project_root))
 
+import transformers
+import torch
+import pathlib
+import os
+
+from qwenvl.data import data_list
+from qwenvl.data.data_qwen import make_supervised_data_module
+from qwenvl.train.argument import (
+    ModelArguments,
+    DataArguments,
+    TrainingArguments,
+    ProcessingArguments
+)
+from qwenvl.train.trainer import (
+    replace_qwen2_vl_attention_class,
+    print_trainable_parameters
+)
+from transformers import Trainer, Qwen2_5_VLForConditionalGeneration
+
+from transformers.utils import logging as hf_logging
 
 local_rank = None
+hf_logging.set_verbosity_error()
+torch.set_num_threads(1)
 
 
 def rank0_print(*args):
@@ -85,109 +92,107 @@ def set_model(model_args, model):
     model.lm_head.requires_grad = False
 
 
-def set_processor(data_args, processor):
-  processor.image_processor.max_pixels = data_args.max_pixels
-  processor.image_processor.min_pixels = data_args.min_pixels
-  processor.image_processor.size["longest_edge"] = data_args.max_pixels
-  processor.image_processor.size["shortest_edge"] = data_args.min_pixels
-  processor.video_processor.max_frame_pixels = data_args.video_max_frame_pixels
-  processor.video_processor.min_frame_pixels = data_args.video_min_frame_pixels
-  return copy.deepcopy(processor)
+def set_processor(processor_args, processor):
+  tokenizer = processor.tokenizer
+  img_processor = processor.image_processor
+  vid_processor = processor.video_processor
+
+  tokenizer.padding_side = processor_args.padding_side
+  tokenizer.model_max_length = processor_args.model_max_length
+  
+  img_processor.max_pixels = processor_args.image_max_pixels
+  img_processor.min_pixels = processor_args.image_min_pixels
+  img_processor.size["shortest_edge"] = processor_args.shortest_edge
+  
+  vid_processor.min_pixels = processor_args.video_min_pixels
+  vid_processor.max_pixels = processor_args.video_max_pixels
+  vid_processor.min_frame_pixels = processor_args.video_min_pixels
+  vid_processor.max_frame_pixels = processor_args.video_max_pixels
+  vid_processor.size['shortest_edge'] = processor_args.shortest_edge
+  vid_processor.default_to_square = processor_args.video_default_to_square
+
+  return processor
 
 
 def train(attn_implementation="flash_attention_2"):
   global local_rank
 
-  parser = transformers.HfArgumentParser(
-      (ModelArguments, DataArguments, TrainingArguments)
+  parser = transformers.HfArgumentParser((
+      ModelArguments,
+      DataArguments,
+      TrainingArguments,
+      ProcessingArguments,
+  ))
+
+  model_args, data_args, training_args, proc_args = parser.parse_args_into_dataclasses()
+
+  processor = transformers.AutoProcessor.from_pretrained(
+      model_args.model_name_or_path,
+      use_fast=True,
   )
-  model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+
+  processor = set_processor(proc_args, processor)
+  
+  ds = data_list(data_args.dataset_use.split(","))[0]
+  data_args.dataset_dir = ds['dataset_dir']
+  data_args.media_dir = ds['media_dir']
+  
   local_rank = training_args.local_rank
+  data_module = None
+  if transformers.trainer_utils.is_main_process(local_rank):
+    # Some cpu and memory intensive preprocessing.
+    data_module = make_supervised_data_module(
+        processor=processor, data_args=data_args, proc_args=proc_args)
+  torch.distributed.barrier()
+  
+  data_module = data_module or make_supervised_data_module(
+      processor=processor, data_args=data_args, proc_args=proc_args
+  )
+  
   os.makedirs(training_args.output_dir, exist_ok=True)
 
-  if "qwen2.5" in model_args.model_name_or_path.lower():
-    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        model_args.model_name_or_path,
-        cache_dir=training_args.cache_dir,
-        attn_implementation=attn_implementation,
-        torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
-    )
-    data_args.image_processor = AutoProcessor.from_pretrained(
-        model_args.model_name_or_path,
-    ).image_processor
-    data_args.model_type = "qwen2.5vl"
-  else:
-    model = Qwen2VLForConditionalGeneration.from_pretrained(
-        model_args.model_name_or_path,
-        cache_dir=training_args.cache_dir,
-        attn_implementation=attn_implementation,
-        torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
-    )
-    data_args.image_processor = Qwen2VLImageProcessor.from_pretrained(
-        model_args.model_name_or_path,
-    )
-    data_args.model_type = "qwen2vl"
+  model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+      model_args.model_name_or_path,
+      cache_dir=training_args.cache_dir,
+      attn_implementation=attn_implementation,
+      torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
+  )
+  if torch.distributed.get_rank() == 0:
+    model.visual.print_trainable_parameters()
+    model.model.print_trainable_parameters()
 
-  if data_args.data_flatten:
-    replace_qwen2_vl_attention_class()
   model.config.use_cache = False
 
   if training_args.gradient_checkpointing:
     if hasattr(model, "enable_input_require_grads"):
       model.enable_input_require_grads()
     else:
-
       def make_inputs_require_grad(module, input, output):
         output.requires_grad_(True)
-
       model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
-
-  tokenizer = transformers.AutoTokenizer.from_pretrained(
-      model_args.model_name_or_path,
-      cache_dir=training_args.cache_dir,
-      model_max_length=training_args.model_max_length,
-      padding_side="right",
-      use_fast=False,
-  )
-  processor = transformers.AutoProcessor.from_pretrained(
-      model_args.model_name_or_path
-  )
-  set_model(model_args, model)
-  processor = set_processor(data_args, processor)
-
-  if torch.distributed.get_rank() == 0:
-    model.visual.print_trainable_parameters()
-    model.model.print_trainable_parameters()
-    
-  if data_args.data_packing:
-      data_module = make_supervised_data_module_packed(processor=processor, data_args=data_args)
-  else:
-      data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
-
+      
   trainer = Trainer(
-      model=model, processing_class=tokenizer, args=training_args, **data_module
+      model=model, processing_class=processor, args=training_args, **data_module
   )
-
+  
   if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
-    logging.info("checkpoint found, resume training")
+    rank0_print("checkpoint found, resume training")
     trainer.train(resume_from_checkpoint=True)
   else:
     trainer.train()
-  # trainer.save_state()
-  # data_args.image_processor.save_pretrained(training_args.output_dir)
 
-  # model.config.use_cache = True
+  trainer.save_state()
+  processor.save_pretrained(training_args.output_dir)
 
-  # safe_save_model_for_hf_trainer(
-  #     trainer=trainer, output_dir=training_args.output_dir)
+  model.config.use_cache = True
+
+  safe_save_model_for_hf_trainer(
+      trainer=trainer, output_dir=training_args.output_dir)
 
 
 if __name__ == "__main__":
-  from qwenvl.train.argument import (
-      ModelArguments,
-      DataArguments,
-      TrainingArguments,
-  )
-  from qwenvl.data.data_qwen_packed import make_supervised_data_module_packed
-  from qwenvl.data.data_qwen import make_supervised_data_module
-  train(attn_implementation="flash_attention_2")
+  torch.set_num_threads(1)
+  if torch.cuda.get_device_name().split()[0] == 'Quadro':
+    train(attn_implementation="eager")
+  else:
+    train(attn_implementation="flash_attention_2")

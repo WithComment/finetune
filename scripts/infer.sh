@@ -14,5 +14,5 @@ torchrun --nproc_per_node=$NPROC_PER_NODE \
               --master_addr=$MASTER_ADDR \
               --master_port=$MASTER_PORT \
               qwenvl/test/infer.py \
-              --model_name "Qwen/Qwen2.5-VL-${1}B-Instruct" \
+              --model_path "Qwen/Qwen2.5-VL-3B-Instruct" \
               --benchmark "vqa-rad/yes-no"

@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from flash_attn.flash_attn_interface import flash_attn_varlen_func
 from torch.utils.data import DataLoader, Sampler
-from transformers import Trainer
+from transformers import Qwen2_5_VLForConditionalGeneration, Trainer
 from transformers.cache_utils import Cache
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
     Qwen2_5_VisionTransformerPretrainedModel,
@@ -401,5 +401,8 @@ Qwen2VisionTransformerPretrainedModel.print_trainable_parameters = (
 Qwen2VLModel.print_trainable_parameters = print_trainable_parameters
 Qwen2_5_VisionTransformerPretrainedModel.print_trainable_parameters = (
     print_trainable_parameters_visual
+)
+Qwen2_5_VLForConditionalGeneration.print_trainable_parameters = (
+    print_trainable_parameters
 )
 Qwen2_5_VLModel.print_trainable_parameters = print_trainable_parameters

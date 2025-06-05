@@ -1,6 +1,20 @@
 import re
 from pathlib import Path
 
+IMG_PROMPTS = (
+  "Generate a concise and descriptive caption for the provided image.",
+  "Describe this image with a short, informative textual caption.",
+  "Write a brief, accurate caption for the visual content shown.",
+  "Create a suitable caption to accompany this specific image input.",
+  "Provide a short textual summary caption reflecting this image's content.",
+  "Please generate an appropriate and concise caption for this picture.",
+  "Summarize the key visual elements of this image in a caption.",
+  "Compose a caption that effectively describes the scene in the image.",
+  "Offer a succinct caption detailing the main focus of this visual.",
+  "Formulate a fitting and descriptive caption for the image presented.",
+)
+
+
 def parse_sampling_rate(dataset_name):
   match = re.search(r"%(\d+)$", dataset_name)
   if match:

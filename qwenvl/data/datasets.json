@@ -1,10 +1,44 @@
 {
   "openbiomedvid": {
-    "dataset_path": "/projects/cft_vlm/openbiomedvid/processed_for_qwen_new.jsonl",
+    "dataset_dir": "/projects/cft_vlm/openbiomedvid/processed_for_qwen_new.jsonl",
     "media_dir": "/projects/cft_vlm/openbiomedvid/vid_processed"
   },
   "openbiomedvid_old": {
-    "dataset_path": "/projects/cft_vlm/openbiomedvid/processed_for_qwen_old.jsonl",
+    "dataset_dir": "/projects/cft_vlm/openbiomedvid/processed_for_qwen_old.jsonl",
     "media_dir": "/projects/cft_vlm/openbiomedvid/vid_processed"
+  },
+  "openpmc": {
+    "train": {
+      "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/train",
+      "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/train"
+    },
+    "validation": {
+      "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/validation",
+      "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/validation"
+    },
+    "test": {
+      "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/test",
+      "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/test"
+    }
+  },
+  "openpmc_train": {
+    "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/train",
+    "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/train",
+    "dataset_class": "openpmc"
+  },
+  "openpmc_validation": {
+    "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/validation",
+    "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/validation",
+    "dataset_class": "openpmc"
+  },
+  "openpmc_test": {
+    "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/test",
+    "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/test",
+    "dataset_class": "openpmc"
+  },
+  "openpmc_tiny": {
+    "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/tiny",
+    "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/test",
+    "dataset_class": "openpmc"
   }
 }

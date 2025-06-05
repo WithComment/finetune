@@ -38,27 +38,11 @@ echo "CUDA_HOME: $CUDA_HOME"
 echo "CUDA version: $(nvcc --version)"
 echo "Available GPUs: $(nvidia-smi -L)"
 
+dataset_use=openpmc_tiny
 
-# DeepSpeed configuration
-deepspeed=./scripts/zero3.json
-
-# Model configuration
-llm=Qwen/Qwen2.5-VL-3B-Instruct
-
-# Training hyperparameters
-lr=2e-7
-batch_size=2  # Reduced for 4 GPUs
-grad_accum_steps=8  # Increased to maintain effective batch size
-
-# Training entry point
-entry_file=qwenvl/train/train_qwen.py
-
-# Dataset configuration - update this with your actual dataset
-datasets=openbiomedvid  # Your dataset name
-
-# Output configuration
-run_name="qwen2vl-openbiomedvid-$(date +%Y%m%d_%H%M%S)"
-output_dir=/projects/cft_vlm/.checkpoint/${run_name}
+base_model=Qwen/Qwen2.5-VL-3B-Instruct
+run_name="${base_model}-${dataset_use//,/_}-$(date +%Y%m%d-%H%M%S)"
+output_dir="/projects/cft_vlm/.checkpoint/${base_model}-${dataset_use//,/_}"
 cache_dir=/projects/cft_vlm/.cache/training
 
 # Create output directory
@@ -67,31 +51,31 @@ mkdir -p ${cache_dir}
 
 # Training arguments
 args="
-    --data_packing True \
-    --deepspeed ${deepspeed} \
-    --model_name_or_path ${llm} \
-    --dataset_use ${datasets} \
-    --data_flatten False \
+    --deepspeed ./scripts/zero3.json \
+    --model_name_or_path ${base_model} \
     --tune_mm_vision False \
     --tune_mm_mlp True \
     --tune_mm_llm True \
-    --bf16 \
+    --dataset_use ${dataset_use} \
+    --data_packing True \
+    --cache_dir ${cache_dir} \
+    --optim adamw_torch \
+    --model_max_length 512 \
     --output_dir ${output_dir} \
-    --num_train_epochs 0.0001 \
-    --per_device_train_batch_size ${batch_size} \
-    --per_device_eval_batch_size $((batch_size*2)) \
-    --gradient_accumulation_steps ${grad_accum_steps} \
+    --bf16 \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 8 \
     --eval_strategy no \
     --save_strategy steps \
     --save_steps 1000 \
     --save_total_limit 1 \
-    --learning_rate ${lr} \
+    --learning_rate 2e-7 \
     --weight_decay 0 \
     --warmup_ratio 0.03 \
     --max_grad_norm 1 \
     --lr_scheduler_type cosine \
     --logging_steps 1 \
-    --model_max_length 8192 \
     --gradient_checkpointing True \
     --dataloader_num_workers 4 \
     --run_name ${run_name} \
@@ -101,4 +85,13 @@ args="
 torchrun --nproc_per_node=${NPROC_PER_NODE} \
               --master_addr=${MASTER_ADDR} \
               --master_port=${MASTER_PORT} \
-              ${entry_file} ${args}
+              qwenvl/train/train_qwen.py ${args}
+
+
+torchrun --nproc_per_node=$NPROC_PER_NODE \
+              --nnodes=1 \
+              --master_addr=$MASTER_ADDR \
+              --master_port=$MASTER_PORT \
+              qwenvl/test/infer.py \
+              --model_path ${output_dir} \
+              --benchmark "vqa-rad/yes-no"

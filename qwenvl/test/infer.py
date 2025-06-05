@@ -1,24 +1,16 @@
-import base64
 from copy import deepcopy
-from io import BytesIO
 from pathlib import Path
 import sys
 import argparse
 import time
-import torch
 import os
 import json
 from tqdm import tqdm
-from PIL import Image
-import pandas as pd
-import random
 from datasets import load_dataset, Dataset
-from transformers import AutoProcessor, AutoTokenizer, Qwen2_5_VLForConditionalGeneration, Qwen2VLForConditionalGeneration
-from qwen_vl_utils import process_vision_info
+from transformers import AutoProcessor, AutoTokenizer, Qwen2_5_VLForConditionalGeneration
 import logging
+import torch
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DistributedSampler, DataLoader
 
 
 logger = logging.getLogger(__name__)
@@ -27,7 +19,7 @@ logger = logging.getLogger(__name__)
 project_root = Path(__file__).parent.parent.parent
 sys.path.append(str(project_root))
 
-from qwenvl.common_utils import get_images_and_videos, get_video_frames
+from qwenvl.data.utils import get_images_and_videos, get_video_frames
 
 def setup_distributed():
   """Initialize distributed training."""
@@ -35,18 +27,16 @@ def setup_distributed():
   torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
 
 
-def load_pretrained_qwen(model_name, model_path, device):
+def load_pretrained_qwen(model_path, device):
   """Load the Qwen model and processor."""
-  if not model_path:
-    model_path = model_name
   logger.info(f"Loading {model_path} on device {device}")
   model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-    model_path,
-    device_map={"": device},
-    torch_dtype=torch.float16,
-    attn_implementation="flash_attention_2"
+      model_path,
+      device_map={"": device},
+      torch_dtype=torch.float16,
+      attn_implementation="flash_attention_2"
   )
-  processor = AutoProcessor.from_pretrained(model_name)
+  processor = AutoProcessor.from_pretrained(model_path)
   return model, processor
 
 
@@ -58,7 +48,7 @@ def make_question(
   """
   Return a formatted question that is suitable for the function `process_vision_info`.
   As well as the question after chat template has been applied.
-  
+
   The formatted question will look like this:`
   [{
     "role": "user",
@@ -77,19 +67,21 @@ def make_question(
       # Base64 or PIL.Image.Image
       content.append({"type": "image", "image": media})
     elif media.endswith('mp4'):
-      content.append({"type": "video", "video": os.path.join(media_dir, media)})
+      content.append(
+          {"type": "video", "video": os.path.join(media_dir, media)})
     elif media.endswith(('jpg', 'jpeg', 'png')):
-      content.append({"type": "image", "image": os.path.join(media_dir, media)})
-  
+      content.append(
+          {"type": "image", "image": os.path.join(media_dir, media)})
+
   if not (options := item.get('options')):
     options = ['Y', 'N']
-  
+
   q += "\nYou only options are:\n"
   for option in options:
     q += f"{option}\n"
-    
+
   q += "Please answer with exactly one letter chosen from the options above."
-  
+
   content.append({"type": "text", "text": q})
   question = [{
       "role": "user",
@@ -132,19 +124,17 @@ def log_header(
     logger: logging.Logger,
     world_size: int,
     benchmark: str,
-    model: str,
-    model_checkpoint: str,
+    model_path: str,
     len_dataset: int,
     len_gpu_dataset: int
 ):
   logger.info(f"Running on {world_size} GPUs")
   logger.info(f"Dataset: {benchmark}")
-  logger.info(f"Model: {model}")
-  logger.info(f"Using model checkpoint: {model_checkpoint}")
+  logger.info(f"Model: {model_path}")
   logger.info(f"Total samples: {len_dataset}")
-  logger.info(f"Samples per GPU: ~{len_gpu_dataset}")  
+  logger.info(f"Samples per GPU: ~{len_gpu_dataset}")
 
-  
+
 def _infer(
     model,
     dataset: Dataset,
@@ -158,20 +148,21 @@ def _infer(
   for i, item in enumerate(tqdm(dataset, disable=local_rank != 0)):
     item = deepcopy(item)
     question, text = make_question(item, processor, media_dir)
-    image_inputs, video_inputs = get_images_and_videos(
+    image_inputs, video_inputs, fps = get_images_and_videos(
         question, base_interval=None, min_frames=None, max_frames=None
     )
-    
+
     image_inputs = image_inputs if image_inputs else None
     video_inputs = video_inputs if video_inputs else None
-    
+
     inputs = processor(
-      text=[text],
-      images=image_inputs,
-      videos=video_inputs,
-      return_tensors="pt",
+        text=[text],
+        images=image_inputs,
+        videos=video_inputs,
+        return_tensors="pt",
+        fps=fps
     ).to(model.device)
-    
+
     with torch.no_grad():
       output_ids = model.generate(
           **inputs,
@@ -186,7 +177,7 @@ def _infer(
     item['model_answer'] = pred
     item.pop('media', None)
     result.append(item)
-    
+
   return result
 
 
@@ -259,9 +250,39 @@ def eval_acc(
   logger.info(f"Accuracy: {acc:.3f}, Invalid Portion: {invalid_portion:.3f}")
   return acc, invalid_portion, total, correct, invalid
 
+
+def eval_on_one_benchmark(
+    output_dir: str,
+    dataset: Dataset,
+    media_dir: str,
+    model: Qwen2_5_VLForConditionalGeneration,
+    processor: AutoProcessor,
+    max_new_tokens: int,
+    temperature: float,
+    world_size: int,
+    local_rank: int,
+) -> None:
+  gpu_dataset = get_gpu_dataset(dataset, world_size, local_rank)
+  gpu_result = _infer(
+      model,
+      gpu_dataset,
+      local_rank,
+      processor,
+      media_dir,
+      max_new_tokens,
+      temperature
+  )
+  save_gpu_result(gpu_result, local_rank, output_dir)
+
+  dist.barrier()
+  if local_rank == 0:
+    final_result = gather_result(world_size, output_dir, logger)
+    eval_acc(final_result, output_dir, logger)
+  dist.barrier()
+
+
 def main(
-    benchmark: str,
-    model_name: str,
+    benchmarks: str,
     model_path: str,
     max_new_tokens: int,
     temperature: float,
@@ -273,54 +294,49 @@ def main(
   local_rank = int(os.environ["LOCAL_RANK"])
   world_size = dist.get_world_size()
   device = f"cuda:{local_rank}"
-  
-  if not model_path:
-    model_path = model_name
-  
-  dataset, _, media_dir = load_benchmark(benchmark)
-  
-  if local_rank == 0:
-    log_header(logger, world_size, benchmark, model_name, model_path,
-               len(dataset), len(dataset) // world_size)
-    
-  model, processor = load_pretrained_qwen(model_name, model_path, device)
-  gpu_dataset = get_gpu_dataset(dataset, world_size, local_rank)
-  gpu_result = _infer(
-      model,
-      gpu_dataset,
-      local_rank,
-      processor,
-      media_dir,
-      max_new_tokens,
-      temperature
-  )
-  output_dir = os.path.join(
-    os.environ['BENCHMARKS_DIR'], benchmark, 'output', model_path.split('/')[-1])
-  os.makedirs(output_dir, exist_ok=True)
-  save_gpu_result(gpu_result, local_rank, output_dir)
-  
-  dist.barrier()
-  if local_rank == 0:
-    final_result = gather_result(world_size, output_dir, logger)
-    eval_acc(final_result, output_dir, logger)
-  dist.barrier()
+
+  model, processor = load_pretrained_qwen(model_path, device)
+  benchmarks = benchmarks.split(',')
+
+  for benchmark in benchmarks:
+    dataset, _, media_dir = load_benchmark(benchmark)
+    if local_rank == 0:
+      log_header(logger, world_size, benchmark, model_path,
+                 len(dataset), len(dataset) // world_size)
+    output_dir = os.path.join(
+        os.environ['BENCHMARKS_DIR'],
+        benchmark,
+        'output',
+        model_path.split('/')[-1]
+    )
+    os.makedirs(output_dir, exist_ok=True)
+    eval_on_one_benchmark(
+        output_dir,
+        dataset,
+        media_dir,
+        model,
+        processor,
+        max_new_tokens,
+        temperature,
+        world_size,
+        local_rank
+    )
   dist.destroy_process_group()
   return 0
 
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
-  parser.add_argument("--model_name", type=str, default="Qwen/Qwen2.5-VL-3B-Instruct")
-  parser.add_argument("--model_path", type=str, required=False)
-  parser.add_argument("--benchmark", type=str, default="vqa-rad/yes-no")
+  parser.add_argument("--model_path", type=str,
+                      default="Qwen/Qwen2.5-VL-3B-Instruct")
+  parser.add_argument("--benchmarks", type=str, default="vqa-rad/yes-no")
   parser.add_argument("--temperature", type=float, default=0.2)
   parser.add_argument("--max_new_tokens", type=float, default=8)
   args = parser.parse_args()
-  
+
   logger = logging.getLogger(__name__)
   main(
-      benchmark=args.benchmark,
-      model_name=args.model_name,
+      benchmarks=args.benchmarks,
       model_path=args.model_path,
       max_new_tokens=args.max_new_tokens,
       temperature=args.temperature,

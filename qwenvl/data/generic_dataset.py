@@ -36,7 +36,7 @@ class GenericDataset(Dataset, ABC):
 
   def __getitem__(self, idx):
     if not self.bins:
-      return [self.make_conversation(self.ds[idx])]
+      return self.make_conversation(self.ds[idx])
     idx = self.bins[idx]
     items = self.ds.select(idx)
     conversation = list()

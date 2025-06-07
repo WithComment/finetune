@@ -19,9 +19,9 @@ class ModelArguments:
 class DataArguments:
   dataset_use: str = field(default="")
   data_packing: bool = field(default=True)
-  use_cft: bool = field(default=False)
   split: str = field(default="train")
   count_tokens: bool = field(default=False)
+  use_cft: bool = field(default=False)
 
 
 @dataclass

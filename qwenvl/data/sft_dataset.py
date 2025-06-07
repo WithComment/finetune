@@ -59,8 +59,8 @@ class SFTDataset(GenericDataset, ABC):
     self.processor = copy.deepcopy(processor)
     self.proc_args = copy.deepcopy(proc_args)
 
-    if not processed_the_same(dataset_dir, proc_args):
-      print(f"Dataset {dataset_dir} not processed with the same arguments.")
+    if data_args.count_tokens and not processed_the_same(dataset_dir, proc_args):
+      print("(Re)counting tokens.")
       print(f"Downloading dataset {data_args.dataset_use}...")
       
       self.ds = sample_from_datadict(

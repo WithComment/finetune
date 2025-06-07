@@ -62,14 +62,14 @@ class OpenbiomedvidDataset(SFTDataset):
       raise NotImplementedError()
 
     conversation.append({
-        'role': 'user',
+      'role': 'user',
       'content': [
           {
-            'type': 'video',
+          'type': 'video',
           'video': str(media_dir / item['video'])
         },
         {
-            'type': 'text',
+          'type': 'text',
           'text': random.choice(VID_PROMPTS)
         },
       ]
@@ -112,63 +112,35 @@ class OpenbiomedvidDataset(SFTDataset):
     print(f"Downloading dataset {ds_key} to {dataset_dir}...")
     ds = (
       datasets.load_dataset(ds_key)
-      .map(lambda item: reencode(item, media_dir), num_proc=32)
+      .filter(lambda item: verify_video(item, media_dir), num_proc=32)
+      # .map(lambda item: reencode(item, media_dir), num_proc=32)
     )
     # Print the number of items with each status, along with their video name
-    status = {
-      'DNE': list(),
-      'Corrupted': list(),
-      'PyERROR': list(),
-      'OK': list()
-    }
-    for item in ds['train']:
-      status[item['status']].append(item['video'])
-    for k, v in status.items():
-      print(f"Status {k}: {len(v)} items")
-      if k == 'OK':
-        continue
-      for vid in v:
-        print(f"  - {vid}")
+    # status = {
+    #   'DNE': list(),
+    #   'Corrupted': list(),
+    #   'PyERROR': list(),
+    #   'OK': list()
+    # }
+    # for item in ds['train']:
+    #   status[item['status']].append(item['video'])
+    # for k, v in status.items():
+    #   print(f"Status {k}: {len(v)} items")
+    #   if k == 'OK':
+    #     continue
+    #   for vid in v:
+    #     print(f"  - {vid}")
 
-    ds = ds.filter(lambda item: item['status'] == 'OK', num_proc=64)
+    # ds = ds.filter(lambda item: item['status'] == 'OK', num_proc=64)
     if save_to_disk:
       ds.save_to_disk(dataset_dir)
 
     return ds
 
+def verify_video(item, media_dir):
+  video_path = media_dir / item['video']
+  return video_path.exists()
 
-def item_status(item, media_dir):
-
-  vid_path = media_dir / item['video']
-  if not vid_path.exists():
-    print(f"Video {item['video']} does not exist.")
-    item['status'] = 'DNE'
-    return item
-
-  command = [
-      'ffmpeg', '-v', 'error', '-i', str(vid_path), '-f', 'null', '-'
-  ]
-
-  try:
-    result = subprocess.run(
-        command, capture_output=True, text=True, check=False
-    )
-    if result.returncode != 0:
-      result = subprocess.run(
-          command, capture_output=True, text=True, check=False
-      )
-    if result.returncode != 0:
-      print(f"Video {item['video']} has invalid headers or is corrupted.")
-      item['status'] = 'Corrupted'
-      return item
-
-  except Exception as e:
-    print(f"Error checking video {item['video']}: {e}")
-    item['status'] = 'PyERROR'
-    return item
-
-  item['status'] = 'OK'
-  return item
 
 logger = logging.getLogger(__name__)
 

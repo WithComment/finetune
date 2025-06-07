@@ -23,3 +23,6 @@ if __name__ == "__main__":
     data_module = make_data_module(
         processor=processor, data_args=data_args, proc_args=proc_args
     )
+  
+  exit(0)
+  

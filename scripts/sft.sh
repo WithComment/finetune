@@ -92,6 +92,7 @@ args=" \
     ${proc_args} \
     ${train_args}"
 
+python -m qwenvl.data.count_tokens --count_tokens ${model_args} ${data_args} ${proc_args}
 
 torchrun --nnodes=1 --nproc_per_node=4 \
     -m qwenvl.train.train_qwen ${args} 

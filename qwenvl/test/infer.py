@@ -157,7 +157,7 @@ def eval_on_one_benchmark(
   dist.barrier()
 
 
-def make_dataloader(processor, benchmark, proc_args):
+def make_data_module(processor, benchmark, proc_args):
   """Make dataset and collator for supervised fine-tuning."""
   dataset_config = data_list[benchmark]
   benchmark_class = benchmark_classes[dataset_config['dataset_class']]
@@ -168,10 +168,7 @@ def make_dataloader(processor, benchmark, proc_args):
       sampling_rate=dataset_config['sampling_rate']
   )
   collate_fn = benchmark.make_model_input
-  return torch.utils.data.DataLoader(
-      benchmark,
-      collate_fn=collate_fn,
-  )
+  return (benchmark, collate_fn)
 
 
 def main(
@@ -192,13 +189,13 @@ def main(
   model, processor = load_pretrained_qwen(model_path, device)
   processor = set_processor(processor, proc_args)
   if dist.get_rank() == 0:
-    dataloader = make_dataloader(
+    benchmark, collate_fn = make_data_module(
         processor=processor, benchmark=benchmark, proc_args=proc_args
     )
     print(
         f"Data module created with {len(dataloader['train_dataset'])} training samples.")
   dist.barrier()
-  dataloader = dataloader or make_dataloader(
+  dataloader = dataloader or make_data_module(
       processor=processor, benchmark=benchmark, proc_args=proc_args
   )
   if local_rank == 0:

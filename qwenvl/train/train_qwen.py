@@ -29,6 +29,7 @@ import torch.distributed as dist
 import pathlib
 
 from qwenvl.data import data_list, dataset_classes
+from qwenvl.data.openbiomedvid import OpenbiomedvidDataset
 from qwenvl.train.argument import (
     ModelArguments,
     DataArguments,
@@ -101,6 +102,9 @@ def make_data_module(processor, data_args, proc_args):
   """Make dataset and collator for supervised fine-tuning."""
   dataset_config = data_list(data_args.dataset_use.split(","))[0]
   dataset_class = dataset_classes[dataset_config['dataset_class']]
+  if dataset_class == OpenbiomedvidDataset and data_args.data_packing:
+    print(RuntimeWarning("Packing is not supported with Openbiomedvid. Useing data_packing=False"))
+    data_args.data_packing = False
   train_dataset = dataset_class(
       processor=processor,
       proc_args=proc_args,

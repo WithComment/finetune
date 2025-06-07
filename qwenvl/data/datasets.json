@@ -16,7 +16,7 @@
   },
   "connectthapa84/OpenBiomedVid": {
     "dataset_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/dataset",
-    "media_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/vid_segments",
+    "media_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/vid_reencoded",
     "dataset_class": "openbiomedvid"
   }
 }

@@ -1,6 +1,0 @@
-{
-  "vqa-rad/yes-no": {
-    "dataset_path": "/projects/cft_vlm/benchmarks/vqa-rad/yes-no/dataset",
-    "media_dir": ""
-  }
-}

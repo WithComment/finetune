@@ -188,3 +188,6 @@ cython_debug/
 .cursorindexingignore
 
 wandb/
+*.out
+*.err
+*.log

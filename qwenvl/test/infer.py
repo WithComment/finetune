@@ -6,20 +6,21 @@ import time
 import os
 import json
 from tqdm import tqdm
-from datasets import load_dataset, Dataset
+from datasets import datasets
 from transformers import AutoProcessor, AutoTokenizer, Qwen2_5_VLForConditionalGeneration
 import logging
 import torch
 import torch.distributed as dist
 
+from qwenvl.train.argument import DataArguments, ProcessingArguments
+from qwenvl.train.train_qwen import set_processor
+
 
 logger = logging.getLogger(__name__)
 
 
-project_root = Path(__file__).parent.parent.parent
-sys.path.append(str(project_root))
-
-from qwenvl.data.utils import get_images_and_videos, get_video_frames
+from qwenvl.data import data_list, benchmark_classes
+from qwenvl.data.benchmark import Benchmark
 
 def setup_distributed():
   """Initialize distributed training."""
@@ -40,84 +41,16 @@ def load_pretrained_qwen(model_path, device):
   return model, processor
 
 
-def make_question(
-    item: dict,
-    processor: AutoProcessor,
-    media_dir: str = None,
-) -> tuple[list[dict], str]:
-  """
-  Return a formatted question that is suitable for the function `process_vision_info`.
-  As well as the question after chat template has been applied.
-
-  The formatted question will look like this:`
-  [{
-    "role": "user",
-    "content": [
-      {"type": "image", "image": "some_path.jpg"},
-      {"type": "video", "video": "some_path.mp4"},
-      {"type": "text", "text": "some more text"},
-    ]
-  }]
-  `
-  """
-  q = item['question']
-  content = list()
-  for media in item.get('media', []):
-    if not isinstance(media, str) or media.startswith('data:image;base64'):
-      # Base64 or PIL.Image.Image
-      content.append({"type": "image", "image": media})
-    elif media.endswith('mp4'):
-      content.append(
-          {"type": "video", "video": os.path.join(media_dir, media)})
-    elif media.endswith(('jpg', 'jpeg', 'png')):
-      content.append(
-          {"type": "image", "image": os.path.join(media_dir, media)})
-
-  if not (options := item.get('options')):
-    options = ['Y', 'N']
-
-  q += "\nYou only options are:\n"
-  for option in options:
-    q += f"{option}\n"
-
-  q += "Please answer with exactly one letter chosen from the options above."
-
-  content.append({"type": "text", "text": q})
-  question = [{
-      "role": "user",
-      "content": content
-  }]
-  # Add generation prompt appends "<|im_start|>assistant\n" to the text
-  text = processor.apply_chat_template(
-      question, tokenize=False, add_generation_prompt=True
-  )
-  return question, text
-
-
-def load_benchmark(
-    benchmark: str,
-) -> tuple[Dataset, str, str]:
-  with open('qwenvl/data/benchmarks.json', 'r') as f:
-    benchmarks = json.load(f)
-  benchmark = benchmarks[benchmark]
-  ds_path = benchmark['dataset_path']
-  if os.path.exists(ds_path):
-    ds = Dataset.load_from_disk(ds_path)
-  else:
-    ds = load_dataset(ds_path)
-  return ds, ds_path, benchmark['media_dir']
-
-
-def get_gpu_dataset(
-    dataset: Dataset,
+def get_gpu_benchmark(
+    benchmark: Benchmark,
     world_size: int,
     local_rank: int
-) -> Dataset:
-  """Split the dataset across multiple GPUs."""
-  items_per_gpu = len(dataset) // world_size
+) -> Benchmark:
+  """Split the benchmark across multiple GPUs."""
+  items_per_gpu = len(benchmark) // world_size
   start_idx = local_rank * items_per_gpu
   end_idx = start_idx + items_per_gpu
-  return dataset.select(range(start_idx, end_idx))
+  return benchmark[start_idx:end_idx]
 
 
 def log_header(
@@ -125,58 +58,35 @@ def log_header(
     world_size: int,
     benchmark: str,
     model_path: str,
-    len_dataset: int,
-    len_gpu_dataset: int
+    len_benchmark: int,
+    len_gpu_benchmark: int
 ):
   logger.info(f"Running on {world_size} GPUs")
-  logger.info(f"Dataset: {benchmark}")
+  logger.info(f"benchmark: {benchmark}")
   logger.info(f"Model: {model_path}")
-  logger.info(f"Total samples: {len_dataset}")
-  logger.info(f"Samples per GPU: ~{len_gpu_dataset}")
+  logger.info(f"Total samples: {len_benchmark}")
+  logger.info(f"Samples per GPU: ~{len_gpu_benchmark}")
 
 
 def _infer(
     model,
-    dataset: Dataset,
-    local_rank: int,
+    conversations: list[dict],
+    collate_fn: callable,
+    gen_config: dict,
     processor: AutoProcessor,
-    media_dir: str,
-    max_new_tokens: int,
-    temperature: float,
 ) -> list[dict]:
   result = []
-  for i, item in enumerate(tqdm(dataset, disable=local_rank != 0)):
-    item = deepcopy(item)
-    question, text = make_question(item, processor, media_dir)
-    image_inputs, video_inputs, fps = get_images_and_videos(
-        question, base_interval=None, min_frames=None, max_frames=None
-    )
-
-    image_inputs = image_inputs if image_inputs else None
-    video_inputs = video_inputs if video_inputs else None
-
-    inputs = processor(
-        text=[text],
-        images=image_inputs,
-        videos=video_inputs,
-        return_tensors="pt",
-        fps=fps
-    ).to(model.device)
+  for i, item in tqdm(enumerate(conversations, disable=torch.distributed.get_rank() != 0)):
 
     with torch.no_grad():
       output_ids = model.generate(
-          **inputs,
-          max_new_tokens=max_new_tokens,
-          do_sample=temperature > 0,
-          temperature=temperature,
-          use_cache=True
+          **collate_fn(item),
+          **gen_config
       )
 
     output = processor.batch_decode(output_ids, skip_special_tokens=True)[0]
     pred = output.split("assistant")[-1].strip().strip("\n")
-    item['model_answer'] = pred
-    item.pop('media', None)
-    result.append(item)
+    result.append(pred)
 
   return result
 
@@ -222,50 +132,16 @@ def gather_result(
   return all_result
 
 
-def eval_acc(
-    result: list[dict],
-    output_dir: str,
-    logger: logging.Logger
-) -> tuple[float]:
-  correct = 0
-  invalid = 0
-  total = len(result)
-  for item in result:
-    if len(item['model_answer']) != 1:
-      invalid += 1
-      continue
-    if item['model_answer'].upper() == item['answer'].upper():
-      correct += 1
-  invalid_portion = invalid / total if total > 0 else 0
-  acc = correct / (total - invalid) if total - invalid > 0 else 0
-  with open(os.path.join(output_dir, 'acc.json'), 'w') as f:
-    json.dump({
-        'accuracy': acc,
-        'invalid_portion': invalid_portion,
-        'total': total,
-        'correct': correct,
-        'invalid': invalid
-    }, f, indent=2)
-  logger.info(f"Total: {total}, Correct: {correct}, Invalid: {invalid}")
-  logger.info(f"Accuracy: {acc:.3f}, Invalid Portion: {invalid_portion:.3f}")
-  return acc, invalid_portion, total, correct, invalid
-
-
 def eval_on_one_benchmark(
-    output_dir: str,
-    dataset: Dataset,
-    media_dir: str,
     model: Qwen2_5_VLForConditionalGeneration,
-    processor: AutoProcessor,
-    max_new_tokens: int,
-    temperature: float,
+    dataloader: torch.utils.data.DataLoader,
     world_size: int,
     local_rank: int,
 ) -> None:
-  gpu_dataset = get_gpu_dataset(dataset, world_size, local_rank)
+  gpu_benchmark = get_gpu_benchmark(dataloader, world_size, local_rank)
   gpu_result = _infer(
       model,
-      gpu_dataset,
+      gpu_benchmark,
       local_rank,
       processor,
       media_dir,
@@ -281,46 +157,60 @@ def eval_on_one_benchmark(
   dist.barrier()
 
 
+def make_dataloader(processor, benchmark, proc_args):
+  """Make dataset and collator for supervised fine-tuning."""
+  dataset_config = data_list[benchmark]
+  benchmark_class = benchmark_classes[dataset_config['dataset_class']]
+  benchmark = benchmark_class(
+      benchmark=benchmark,
+      processor=processor,
+      proc_args=proc_args,
+      sampling_rate=dataset_config['sampling_rate']
+  )
+  collate_fn = benchmark.make_model_input
+  return torch.utils.data.DataLoader(
+      benchmark,
+      collate_fn=collate_fn,
+  )
+
+
 def main(
-    benchmarks: str,
     model_path: str,
-    max_new_tokens: int,
-    temperature: float,
+    benchmark: str,
+    split: str,
+    proc_args: ProcessingArguments,
     logger: logging.Logger,
 ):
-  """Run inference on the dataset using Qwen2-VL."""
-  # Setup distributed training
+  """Run inference on the benchmark using Qwen2-VL."""
   setup_distributed()
-  local_rank = int(os.environ["LOCAL_RANK"])
+  dist.init_process_group(backend="nccl")
+
   world_size = dist.get_world_size()
+  local_rank = dist.get_rank()
   device = f"cuda:{local_rank}"
 
   model, processor = load_pretrained_qwen(model_path, device)
-  benchmarks = benchmarks.split(',')
+  processor = set_processor(processor, proc_args)
+  if dist.get_rank() == 0:
+    dataloader = make_dataloader(
+        processor=processor, benchmark=benchmark, proc_args=proc_args
+    )
+    print(
+        f"Data module created with {len(dataloader['train_dataset'])} training samples.")
+  dist.barrier()
+  dataloader = dataloader or make_dataloader(
+      processor=processor, benchmark=benchmark, proc_args=proc_args
+  )
+  if local_rank == 0:
+    log_header(logger, world_size, benchmark, model_path,
+                len(benchmark), len(benchmark) // world_size)
 
-  for benchmark in benchmarks:
-    dataset, _, media_dir = load_benchmark(benchmark)
-    if local_rank == 0:
-      log_header(logger, world_size, benchmark, model_path,
-                 len(dataset), len(dataset) // world_size)
-    output_dir = os.path.join(
-        os.environ['BENCHMARKS_DIR'],
-        benchmark,
-        'output',
-        model_path.split('/')[-1]
-    )
-    os.makedirs(output_dir, exist_ok=True)
-    eval_on_one_benchmark(
-        output_dir,
-        dataset,
-        media_dir,
-        model,
-        processor,
-        max_new_tokens,
-        temperature,
-        world_size,
-        local_rank
-    )
+  eval_on_one_benchmark(
+      model,
+      dataloader,
+      world_size,
+      local_rank
+  )
   dist.destroy_process_group()
   return 0
 

@@ -14,57 +14,40 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+from transformers.trainer_utils import get_last_checkpoint
+from transformers.trainer_callback import TrainerCallback, TrainerState, TrainerControl
+from transformers import Trainer
+import logging
+import signal
+import os
 import sys
 from pathlib import Path
 
-
-project_root = Path(__file__).parent.parent.parent
-sys.path.append(str(project_root))
-
 import transformers
 import torch
+import torch.distributed as dist
 import pathlib
-import os
 
-from qwenvl.data import data_list
-from qwenvl.data.data_qwen import make_supervised_data_module
+from qwenvl.data import data_list, dataset_classes
 from qwenvl.train.argument import (
     ModelArguments,
     DataArguments,
     TrainingArguments,
     ProcessingArguments
 )
-from qwenvl.train.trainer import (
-    replace_qwen2_vl_attention_class,
-    print_trainable_parameters
-)
+import qwenvl.train.trainer
+
 from transformers import Trainer, Qwen2_5_VLForConditionalGeneration
 
 from transformers.utils import logging as hf_logging
 
-local_rank = None
 hf_logging.set_verbosity_error()
 torch.set_num_threads(1)
 
 
 def rank0_print(*args):
-  if local_rank == 0:
+  if dist.get_rank() == 0:
     print(*args)
-
-
-def safe_save_model_for_hf_trainer(trainer: transformers.Trainer, output_dir: str):
-  """Collects the state dict and dump to disk."""
-
-  if trainer.deepspeed:
-    torch.cuda.synchronize()
-    trainer.save_model(output_dir)
-    return
-
-  state_dict = trainer.model.state_dict()
-  if trainer.args.should_save:
-    cpu_state_dict = {key: value.cpu() for key, value in state_dict.items()}
-    del state_dict
-    trainer._save(output_dir, state_dict=cpu_state_dict)  # noqa
 
 
 def set_model(model_args, model):
@@ -99,11 +82,11 @@ def set_processor(processor_args, processor):
 
   tokenizer.padding_side = processor_args.padding_side
   tokenizer.model_max_length = processor_args.model_max_length
-  
+
   img_processor.max_pixels = processor_args.image_max_pixels
   img_processor.min_pixels = processor_args.image_min_pixels
   img_processor.size["shortest_edge"] = processor_args.shortest_edge
-  
+
   vid_processor.min_pixels = processor_args.video_min_pixels
   vid_processor.max_pixels = processor_args.video_max_pixels
   vid_processor.min_frame_pixels = processor_args.video_min_pixels
@@ -114,8 +97,59 @@ def set_processor(processor_args, processor):
   return processor
 
 
+def make_data_module(processor, data_args, proc_args):
+  """Make dataset and collator for supervised fine-tuning."""
+  dataset_config = data_list(data_args.dataset_use.split(","))[0]
+  dataset_class = dataset_classes[dataset_config['dataset_class']]
+  train_dataset = dataset_class(
+      processor=processor,
+      proc_args=proc_args,
+      data_args=data_args,
+      sampling_rate=dataset_config['sampling_rate']
+  )
+  collate_fn = train_dataset.make_model_input
+  return dict(
+      train_dataset=train_dataset, eval_dataset=None, data_collator=collate_fn
+  )
+
+
+SLURM_PREEMPTION_SIGNAL_RECEIVED = False
+
+def handle_preemption_signal(signum, frame):
+  """Signal handler that sets the global preemption flag."""
+  global SLURM_PREEMPTION_SIGNAL_RECEIVED
+  if not SLURM_PREEMPTION_SIGNAL_RECEIVED:
+    rank0_print(
+        f"Received signal {signum}. Triggering graceful shutdown and checkpointing...")
+    SLURM_PREEMPTION_SIGNAL_RECEIVED = True
+
+class SlurmPreemptionCallback(TrainerCallback):
+  def on_step_end(self, args: transformers.TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+    """Check for the preemption signal at the end of each step."""
+    if SLURM_PREEMPTION_SIGNAL_RECEIVED:
+      if state.is_world_process_zero:
+        rank0_print("Preemption signal detected. Saving model...")
+
+      kwargs['trainer'].save_model(args.output_dir)
+      kwargs['trainer'].save_state()
+
+      control.should_training_stop = True
+
+    dist.barrier()
+
+
 def train(attn_implementation="flash_attention_2"):
-  global local_rank
+  if "SLURM_PROCID" in os.environ:
+    dist.init_process_group(backend='nccl')
+  
+  if dist.is_initialized():
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    print(
+        f"Hello from Slurm! Rank {rank}/{world_size}",
+        flush=True)
+
+  signal.signal(signal.SIGUSR1, handle_preemption_signal)
 
   parser = transformers.HfArgumentParser((
       ModelArguments,
@@ -132,36 +166,27 @@ def train(attn_implementation="flash_attention_2"):
   )
 
   processor = set_processor(proc_args, processor)
-  
-  ds = data_list(data_args.dataset_use.split(","))[0]
-  data_args.dataset_dir = ds['dataset_dir']
-  data_args.media_dir = ds['media_dir']
-  
-  local_rank = training_args.local_rank
+
   data_module = None
-  if transformers.trainer_utils.is_main_process(local_rank):
-    # Some cpu and memory intensive preprocessing.
-    data_module = make_supervised_data_module(
-        processor=processor, data_args=data_args, proc_args=proc_args)
-  torch.distributed.barrier()
-  
-  data_module = data_module or make_supervised_data_module(
+  if dist.get_rank() == 0:
+    data_module = make_data_module(
+        processor=processor, data_args=data_args, proc_args=proc_args
+    )
+    rank0_print(
+        f"Data module created with {len(data_module['train_dataset'])} training samples.")
+  dist.barrier()
+  data_module = data_module or make_data_module(
       processor=processor, data_args=data_args, proc_args=proc_args
   )
-  
-  os.makedirs(training_args.output_dir, exist_ok=True)
 
   model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
       model_args.model_name_or_path,
-      cache_dir=training_args.cache_dir,
       attn_implementation=attn_implementation,
       torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
   )
-  if torch.distributed.get_rank() == 0:
+  if dist.get_rank() == 0:
     model.visual.print_trainable_parameters()
     model.model.print_trainable_parameters()
-
-  model.config.use_cache = False
 
   if training_args.gradient_checkpointing:
     if hasattr(model, "enable_input_require_grads"):
@@ -170,29 +195,34 @@ def train(attn_implementation="flash_attention_2"):
       def make_inputs_require_grad(module, input, output):
         output.requires_grad_(True)
       model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
-      
+
   trainer = Trainer(
-      model=model, processing_class=processor, args=training_args, **data_module
+      model=model,
+      processing_class=processor,
+      args=training_args,
+      callbacks=[SlurmPreemptionCallback],
+      **data_module
   )
-  
-  if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
-    rank0_print("checkpoint found, resume training")
-    trainer.train(resume_from_checkpoint=True)
+
+  last_checkpoint = None
+  if os.path.isdir(training_args.output_dir):
+    last_checkpoint = get_last_checkpoint(training_args.output_dir)
+
+  if last_checkpoint is not None:
+    rank0_print(
+        f"Checkpoint detected. Resuming training from {last_checkpoint}")
   else:
-    trainer.train()
+    rank0_print("No checkpoint found. Starting training from scratch.")
+  
+  trainer.train(resume_from_checkpoint=last_checkpoint)
 
+  # When training completes normally without preemption.
   trainer.save_state()
-  processor.save_pretrained(training_args.output_dir)
-
-  model.config.use_cache = True
-
-  safe_save_model_for_hf_trainer(
-      trainer=trainer, output_dir=training_args.output_dir)
+  if trainer.is_world_process_zero():
+    processor.save_pretrained(training_args.output_dir)
+    trainer.save_model(training_args.output_dir)
 
 
 if __name__ == "__main__":
   torch.set_num_threads(1)
-  if torch.cuda.get_device_name().split()[0] == 'Quadro':
-    train(attn_implementation="eager")
-  else:
-    train(attn_implementation="flash_attention_2")
+  train(attn_implementation="flash_attention_2")

@@ -18,8 +18,10 @@ class ModelArguments:
 @dataclass
 class DataArguments:
   dataset_use: str = field(default="")
-  data_packing: bool = field(default=False)
+  data_packing: bool = field(default=True)
   use_cft: bool = field(default=False)
+  split: str = field(default="train")
+  count_tokens: bool = field(default=False)
 
 
 @dataclass
@@ -44,5 +46,5 @@ class ProcessingArguments:
   base_interval: int = field(default=2)
 
   padding_side: str = field(default="right")
-  model_max_length: int = field(default=512)
+  model_max_length: int = field(default=3072)
   add_generation_prompt: bool = field(default=False)

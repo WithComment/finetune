@@ -1,44 +1,22 @@
 {
-  "openbiomedvid": {
-    "dataset_dir": "/projects/cft_vlm/openbiomedvid/processed_for_qwen_new.jsonl",
-    "media_dir": "/projects/cft_vlm/openbiomedvid/vid_processed"
+  "flaviagiammarino/path-vqa": {
+    "dataset_dir": "/projects/cft_vlm/datasets/path_vqa/data/dataset",
+    "media_dir": null,
+    "dataset_class": "vqa"
   },
-  "openbiomedvid_old": {
-    "dataset_dir": "/projects/cft_vlm/openbiomedvid/processed_for_qwen_old.jsonl",
-    "media_dir": "/projects/cft_vlm/openbiomedvid/vid_processed"
+  "flaviagiammarino/vqa-rad": {
+    "dataset_dir": "/projects/cft_vlm/datasets/vqa_rad/data/dataset",
+    "media_dir": null,
+    "dataset_class": "vqa"
   },
-  "openpmc": {
-    "train": {
-      "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/train",
-      "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/train"
-    },
-    "validation": {
-      "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/validation",
-      "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/validation"
-    },
-    "test": {
-      "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/test",
-      "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/test"
-    }
-  },
-  "openpmc_train": {
-    "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/train",
-    "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/train",
+  "vector-institute/open-pmc": {
+    "dataset_dir": "/projects/cft_vlm/datasets/open_pmc/data/dataset",
+    "media_dir": null,
     "dataset_class": "openpmc"
   },
-  "openpmc_validation": {
-    "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/validation",
-    "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/validation",
-    "dataset_class": "openpmc"
-  },
-  "openpmc_test": {
-    "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/test",
-    "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/test",
-    "dataset_class": "openpmc"
-  },
-  "openpmc_tiny": {
-    "dataset_dir": "/projects/cft_vlm/datasets/openpmc/data/dataset/tiny",
-    "media_dir": "/projects/cft_vlm/datasets/openpmc/data/images/test",
-    "dataset_class": "openpmc"
+  "connectthapa84/OpenBiomedVid": {
+    "dataset_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/dataset",
+    "media_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/vid_segments",
+    "dataset_class": "openbiomedvid"
   }
 }

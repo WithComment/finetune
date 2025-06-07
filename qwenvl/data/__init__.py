@@ -1,19 +1,20 @@
 import re
 from pathlib import Path
 
-IMG_PROMPTS = (
-  "Generate a concise and descriptive caption for the provided image.",
-  "Describe this image with a short, informative textual caption.",
-  "Write a brief, accurate caption for the visual content shown.",
-  "Create a suitable caption to accompany this specific image input.",
-  "Provide a short textual summary caption reflecting this image's content.",
-  "Please generate an appropriate and concise caption for this picture.",
-  "Summarize the key visual elements of this image in a caption.",
-  "Compose a caption that effectively describes the scene in the image.",
-  "Offer a succinct caption detailing the main focus of this visual.",
-  "Formulate a fitting and descriptive caption for the image presented.",
-)
+from qwenvl.data.benchmark import Benchmark
+from qwenvl.data.openbiomedvid import OpenbiomedvidDataset
+from qwenvl.data.openpmc import OpenpmcDataset
+from qwenvl.data.sft_dataset import SFTDataset
+from qwenvl.data.vqa import VQADataset
 
+dataset_classes: dict[str, SFTDataset] = {
+    'openpmc': OpenpmcDataset,
+    'openbiomedvid': OpenbiomedvidDataset,
+}
+benchmark_classes: dict[str, Benchmark] = {
+    'vqa-rad': VQADataset,
+    'path-vqa': VQADataset,
+}
 
 def parse_sampling_rate(dataset_name):
   match = re.search(r"%(\d+)$", dataset_name)
@@ -29,15 +30,19 @@ def data_list(dataset_names):
     data_dict = json.load(f)
     
   config_list = []
-  for dataset_name in dataset_names:
-    sampling_rate = parse_sampling_rate(dataset_name)
-    dataset_name = re.sub(r"%(\d+)$", "", dataset_name)
-    if dataset_name in data_dict.keys():
-      config = data_dict[dataset_name].copy()
+  for ds_name in dataset_names:
+    if '%' in ds_name:
+      ds_name, sampling_rate = ds_name.split('%')
+      sampling_rate = float(sampling_rate) / 100
+    else:
+      sampling_rate = 1.0
+    
+    if ds_name in data_dict.keys():
+      config = data_dict[ds_name].copy()
       config["sampling_rate"] = sampling_rate
       config_list.append(config)
     else:
-      raise ValueError(f"Cannot find {dataset_name}")
+      raise ValueError(f"Cannot find {ds_name}")
   return config_list
 
 

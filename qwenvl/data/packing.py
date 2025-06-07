@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import binpacking
 import datasets
@@ -18,6 +19,7 @@ import tqdm
 import math
 from numba import njit
 
+DEBUG = os.environ.get('DEBUG', '0') == '1'
 
 @njit(cache=True)
 def get_height(num_bins: int) -> int:
@@ -128,7 +130,6 @@ def fast_best_fit_decreasing(items, bin_capacity, progress_bar=False):
   num_items = 0
   num_bins = 0
   bin_indices = []
-  progress_bar = False
 
   # bins_remaining_capacity = []
   # segment_tree = []
@@ -138,17 +139,11 @@ def fast_best_fit_decreasing(items, bin_capacity, progress_bar=False):
 
   indexed_items = sorted(enumerate(items), key=lambda x: x[1], reverse=True)
 
-  if progress_bar:
-    for _, item in tqdm.tqdm(indexed_items):
-      bin_index, num_items, num_bins = insert(
-          num_items, num_bins, bins_remaining_capacity, segment_tree, item)
-      bin_indices.append(bin_index)
-  else:
-    for _, item in indexed_items:
-      bin_index, num_items, num_bins = insert(
-          num_items, num_bins, bins_remaining_capacity, segment_tree, item)
-      bin_indices.append(bin_index)
-
+  for _, item in tqdm.tqdm(indexed_items, desc="Packing items", disable=not progress_bar):
+    bin_index, num_items, num_bins = insert(
+        num_items, num_bins, bins_remaining_capacity, segment_tree, item)
+    bin_indices.append(bin_index)
+    
   # W build the bins to items mapping
   bins_to_items = [[] for _ in range(num_bins)]
   for item_index, bin_index in enumerate(bin_indices):

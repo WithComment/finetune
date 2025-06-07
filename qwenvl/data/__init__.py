@@ -12,8 +12,7 @@ dataset_classes: dict[str, SFTDataset] = {
     'openbiomedvid': OpenbiomedvidDataset,
 }
 benchmark_classes: dict[str, Benchmark] = {
-    'vqa-rad': VQADataset,
-    'path-vqa': VQADataset,
+    'vqa': VQADataset,
 }
 
 def parse_sampling_rate(dataset_name):

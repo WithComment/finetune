@@ -1,31 +1,33 @@
-from copy import deepcopy
 from pathlib import Path
-import sys
-import argparse
-import time
 import os
 import json
+from typing import Callable
 from tqdm import tqdm
-from datasets import datasets
-from transformers import AutoProcessor, AutoTokenizer, Qwen2_5_VLForConditionalGeneration
+from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 import logging
 import torch
 import torch.distributed as dist
+import transformers
 
-from qwenvl.train.argument import DataArguments, ProcessingArguments
+from qwenvl.train.argument import DataArguments, ModelArguments, ProcessingArguments
 from qwenvl.train.train_qwen import set_processor
 
 
 logger = logging.getLogger(__name__)
 
-
 from qwenvl.data import data_list, benchmark_classes
 from qwenvl.data.benchmark import Benchmark
 
-def setup_distributed():
-  """Initialize distributed training."""
-  dist.init_process_group(backend="nccl")
-  torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
+
+def log_header(
+    model_path: str,
+    data_args: DataArguments,
+    world_size: int,
+    logger: logging.Logger,
+):
+  logger.info(f"Running on {world_size} GPUs")
+  logger.info(f"benchmark: {data_args}")
+  logger.info(f"Model: {model_path}")
 
 
 def load_pretrained_qwen(model_path, device):
@@ -41,7 +43,7 @@ def load_pretrained_qwen(model_path, device):
   return model, processor
 
 
-def get_gpu_benchmark(
+def get_gpu_indices(
     benchmark: Benchmark,
     world_size: int,
     local_rank: int
@@ -50,37 +52,23 @@ def get_gpu_benchmark(
   items_per_gpu = len(benchmark) // world_size
   start_idx = local_rank * items_per_gpu
   end_idx = start_idx + items_per_gpu
-  return benchmark[start_idx:end_idx]
-
-
-def log_header(
-    logger: logging.Logger,
-    world_size: int,
-    benchmark: str,
-    model_path: str,
-    len_benchmark: int,
-    len_gpu_benchmark: int
-):
-  logger.info(f"Running on {world_size} GPUs")
-  logger.info(f"benchmark: {benchmark}")
-  logger.info(f"Model: {model_path}")
-  logger.info(f"Total samples: {len_benchmark}")
-  logger.info(f"Samples per GPU: ~{len_gpu_benchmark}")
+  return range(start_idx, end_idx)
 
 
 def _infer(
     model,
-    conversations: list[dict],
+    benchmark: Benchmark,
+    gpu_indices: list[dict],
     collate_fn: callable,
     gen_config: dict,
     processor: AutoProcessor,
 ) -> list[dict]:
   result = []
-  for i, item in tqdm(enumerate(conversations, disable=torch.distributed.get_rank() != 0)):
-
+  for idx in tqdm(gpu_indices, disable=torch.distributed.get_rank() != 0):
+    item = benchmark[idx]
     with torch.no_grad():
       output_ids = model.generate(
-          **collate_fn(item),
+          **collate_fn(item).to(model.device),
           **gen_config
       )
 
@@ -94,39 +82,36 @@ def _infer(
 def save_gpu_result(
     result: list[dict],
     rank: int,
-    output_dir: str,
+    output_dir: Path,
 ) -> None:
-  with open(os.path.join(output_dir, f"temp_{rank}.jsonl"), 'w') as f:
+  with open(output_dir / f'temp_{rank}.jsonl', 'w') as f:
     for item in result:
       f.write(json.dumps(item) + '\n')
 
 
 def gather_result(
     world_size,
-    output_dir: str,
+    output_dir: Path,
     logger: logging.Logger
 ):
   all_result = []
   # Gather result from all GPUs
   for rank in range(world_size):
-    rank_file = os.path.join(output_dir, f"temp_{rank}.jsonl")
-    with open(rank_file, 'r') as f:
+    with open(output_dir / f"temp_{rank}.jsonl", 'r') as f:
       rank_result = [json.loads(line) for line in f]
       all_result.extend(rank_result)
 
-  all_result.sort(key=lambda x: x['id'])
-  final_output = os.path.join(output_dir, "result.jsonl")
-  with open(final_output, 'w') as f:
+  with open(output_dir / 'results.jsonl', 'w') as f:
     for item in all_result:
       f.write(json.dumps(item) + '\n')
 
   # Clean up temporary files
   for rank in range(world_size):
-    temp_file = os.path.join(output_dir, f"temp_{rank}.jsonl")
-    if os.path.exists(temp_file):
-      os.remove(temp_file)
+    temp_file = output_dir / f"temp_{rank}.jsonl"
+    if temp_file.exists():
+      temp_file.unlink()
 
-  logger.info(f"Inference complete. result saved to {final_output}")
+  logger.info(f"Inference complete. result saved to {output_dir / 'results.jsonl'}")
   logger.info(f"Total processed samples: {len(all_result)}")
 
   return all_result
@@ -134,52 +119,51 @@ def gather_result(
 
 def eval_on_one_benchmark(
     model: Qwen2_5_VLForConditionalGeneration,
-    dataloader: torch.utils.data.DataLoader,
     world_size: int,
     local_rank: int,
+    output_dir: Path,
+    benchmark: Benchmark,
+    collate_fn: Callable,
 ) -> None:
-  gpu_benchmark = get_gpu_benchmark(dataloader, world_size, local_rank)
+  if not output_dir.exists():
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
   gpu_result = _infer(
       model,
-      gpu_benchmark,
-      local_rank,
-      processor,
-      media_dir,
-      max_new_tokens,
-      temperature
+      benchmark,
+      gpu_indices=get_gpu_indices(benchmark, world_size, local_rank),
+      collate_fn=collate_fn,
+      gen_config=benchmark.generation_config,
+      processor=benchmark.processor,
   )
   save_gpu_result(gpu_result, local_rank, output_dir)
 
   dist.barrier()
   if local_rank == 0:
     final_result = gather_result(world_size, output_dir, logger)
-    eval_acc(final_result, output_dir, logger)
   dist.barrier()
+  
 
-
-def make_data_module(processor, benchmark, proc_args):
+def make_data_module(processor, data_args, proc_args):
   """Make dataset and collator for supervised fine-tuning."""
-  dataset_config = data_list[benchmark]
+  dataset_config = data_list(data_args.dataset_use.split(","))[0]
   benchmark_class = benchmark_classes[dataset_config['dataset_class']]
   benchmark = benchmark_class(
-      benchmark=benchmark,
       processor=processor,
+      data_args=data_args,
       proc_args=proc_args,
-      sampling_rate=dataset_config['sampling_rate']
+      ds_key=dataset_config['ds_key'],
   )
   collate_fn = benchmark.make_model_input
-  return (benchmark, collate_fn)
+  return {'benchmark': benchmark, 'collate_fn': collate_fn}
 
 
 def main(
     model_path: str,
-    benchmark: str,
-    split: str,
+    data_args: DataArguments,
     proc_args: ProcessingArguments,
-    logger: logging.Logger,
 ):
   """Run inference on the benchmark using Qwen2-VL."""
-  setup_distributed()
   dist.init_process_group(backend="nccl")
 
   world_size = dist.get_world_size()
@@ -187,45 +171,43 @@ def main(
   device = f"cuda:{local_rank}"
 
   model, processor = load_pretrained_qwen(model_path, device)
-  processor = set_processor(processor, proc_args)
+  processor = set_processor(proc_args, processor)
+  data_module = None
   if dist.get_rank() == 0:
-    benchmark, collate_fn = make_data_module(
-        processor=processor, benchmark=benchmark, proc_args=proc_args
+    data_module = make_data_module(
+        processor=processor, data_args=data_args, proc_args=proc_args
     )
     print(
-        f"Data module created with {len(dataloader['train_dataset'])} training samples.")
+        f"Data module created with {len(data_module['benchmark'])} samples.")
   dist.barrier()
-  dataloader = dataloader or make_data_module(
-      processor=processor, benchmark=benchmark, proc_args=proc_args
+  data_module = data_module or make_data_module(
+      processor=processor, data_args=data_args, proc_args=proc_args
   )
   if local_rank == 0:
-    log_header(logger, world_size, benchmark, model_path,
-                len(benchmark), len(benchmark) // world_size)
+    log_header(model_path, data_args, world_size, logger)
 
+  output_dir = data_module['benchmark'].dataset_dir.parent / "results" / model_path
   eval_on_one_benchmark(
       model,
-      dataloader,
-      world_size,
-      local_rank
+      world_size=world_size,
+      local_rank=local_rank,
+      output_dir=output_dir,
+      **data_module
   )
   dist.destroy_process_group()
   return 0
 
 
 if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
-  parser.add_argument("--model_path", type=str,
-                      default="Qwen/Qwen2.5-VL-3B-Instruct")
-  parser.add_argument("--benchmarks", type=str, default="vqa-rad/yes-no")
-  parser.add_argument("--temperature", type=float, default=0.2)
-  parser.add_argument("--max_new_tokens", type=float, default=8)
-  args = parser.parse_args()
-
-  logger = logging.getLogger(__name__)
+  parser = transformers.HfArgumentParser((
+      ModelArguments,
+      DataArguments,
+      ProcessingArguments,
+  ))
+  model_args, data_args, proc_args = parser.parse_args_into_dataclasses()
+  
   main(
-      benchmarks=args.benchmarks,
-      model_path=args.model_path,
-      max_new_tokens=args.max_new_tokens,
-      temperature=args.temperature,
-      logger=logger
+      model_args.model_name_or_path,
+      data_args,
+      proc_args,
   )

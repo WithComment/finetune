@@ -280,7 +280,7 @@ def get_batch_images_and_videos(
   images = list()
   videos = list()
   fpss = list()
-  if not isinstance(conversations, list):
+  if isinstance(conversations[0], dict):
     conversations = [conversations]
   for conversation in conversations:
     imgs, vids, fps = get_images_and_videos(

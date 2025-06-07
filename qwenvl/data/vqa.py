@@ -11,6 +11,14 @@ class VQADataset(Benchmark):
   add_labels: bool = False
   add_generation_prompt: bool = True
   open_ended: bool = True
+  generation_config: dict = {
+    'max_new_tokens': 32,
+    'do_sample': False,
+    'temperature': 0.0,
+  }
+  
+  def make_conversation(self, item):
+    return self._make_conversation(item, self.media_dir, use_cft=False)
   
   @staticmethod
   def _make_conversation(item, media_dir, use_cft=False):
@@ -24,7 +32,7 @@ class VQADataset(Benchmark):
       'content': [
         {
           'type': 'image',
-          'media': item['image']
+          'image': item['image']
         },
         {
           'type': 'text',

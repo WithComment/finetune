@@ -11,8 +11,8 @@
 #SBATCH --partition=a40
 #SBATCH --open-mode=append
 #SBATCH --wait-all-nodes=1
-#SBATCH --output=logs/sft_%j.out
-#SBATCH --error=logs/sft_%j.err
+#SBATCH --output=logs/sft/%j.out
+#SBATCH --error=logs/sft/%j.err
 #SBATCH --requeue
 #SBATCH --signal=B:USR1@180
 
@@ -31,7 +31,6 @@ export CUDA_HOME=/pkgs/cuda-12.4
 export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 
-# Verify CUDA is accessible
 echo "CUDA_HOME: $CUDA_HOME"
 echo "CUDA version: $(nvcc --version)"
 echo "Available GPUs: $(nvidia-smi -L)"

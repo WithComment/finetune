@@ -1,26 +1,26 @@
 {
-  "flaviagiammarino/path-vqa": {
-    "dataset_dir": "/projects/cft_vlm/datasets/path_vqa/data/dataset",
+  "path-vqa": {
+    "ds_dir": "/projects/cft_vlm/datasets/path_vqa/data/dataset",
     "media_dir": null,
-    "dataset_class": "vqa",
+    "ds_class": "vqa",
     "ds_key": "flaviagiammarino/path-vqa"
   },
-  "flaviagiammarino/vqa-rad": {
-    "dataset_dir": "/projects/cft_vlm/datasets/vqa_rad/data/dataset",
+  "vqa-rad": {
+    "ds_dir": "/projects/cft_vlm/datasets/vqa_rad/data/dataset",
     "media_dir": null,
-    "dataset_class": "vqa",
+    "ds_class": "vqa",
     "ds_key": "flaviagiammarino/vqa-rad"
   },
-  "vector-institute/open-pmc": {
-    "dataset_dir": "/projects/cft_vlm/datasets/open_pmc/data/dataset",
+  "open-pmc": {
+    "ds_dir": "/projects/cft_vlm/datasets/open_pmc/data/dataset",
     "media_dir": null,
-    "dataset_class": "openpmc",
+    "ds_class": "openpmc",
     "ds_key": "vector-institute/open-pmc"
   },
-  "connectthapa84/OpenBiomedVid": {
-    "dataset_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/dataset",
+  "openbiomedvid": {
+    "ds_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/dataset",
     "media_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/vid_reencoded",
-    "dataset_class": "openbiomedvid",
+    "ds_class": "openbiomedvid",
     "ds_key": "connectthapa84/OpenBiomedVid"
   }
 }

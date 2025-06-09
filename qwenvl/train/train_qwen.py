@@ -74,7 +74,7 @@ def set_model(model_args, model):
     for n, p in model.model.named_parameters():
       p.requires_grad = False
     model.lm_head.requires_grad = False
-
+  return model
 
 def set_processor(processor_args, processor):
   tokenizer = processor.tokenizer
@@ -101,7 +101,7 @@ def set_processor(processor_args, processor):
 def make_data_module(processor, data_args, proc_args):
   """Make dataset and collator for supervised fine-tuning."""
   dataset_config = data_list(data_args.dataset_use.split(","))[0]
-  dataset_class = dataset_classes[dataset_config['dataset_class']]
+  dataset_class = dataset_classes[dataset_config['ds_class']]
   if dataset_class == OpenbiomedvidDataset and data_args.data_packing:
     print(RuntimeWarning("Packing is not supported with Openbiomedvid. Useing data_packing=False"))
     data_args.data_packing = False
@@ -188,6 +188,7 @@ def train(attn_implementation="flash_attention_2"):
       attn_implementation=attn_implementation,
       torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
   )
+  model = set_model(model_args, model)
   if dist.get_rank() == 0:
     model.visual.print_trainable_parameters()
     model.model.print_trainable_parameters()

@@ -45,7 +45,7 @@ class OpenbiomedvidDataset(SFTDataset):
 
   add_labels: bool = True
   add_generation_prompt: bool = False
-  ds_key: str = 'connectthapa84/OpenBiomedVid'
+
 
   @staticmethod
   def get_content(item):
@@ -85,57 +85,16 @@ class OpenbiomedvidDataset(SFTDataset):
     })
     return conversation
 
-  @classmethod
-  def download(
-      cls,
-      ds_key: str = None,
-      force: bool = False,
-      save_to_disk: bool = True,
-  ) -> datasets.DatasetDict:
-    if ds_key:
-      raise RuntimeWarning("ds_key is not supported.")
-
-    ds_key = cls.ds_key
-
-    with open(Path(__file__).parent / 'datasets.json', 'r') as f:
-      ds_configs = json.load(f)
-
-    ds_config = ds_configs[ds_key]
-    dataset_dir = Path(ds_config['dataset_dir'])
-    media_dir = Path(ds_config['media_dir'])
-
-    if Path(dataset_dir).exists() and not force:
-      print(
-        f"Dataset {dataset_dir} already exists. Use force=True to overwrite.")
-      return datasets.load_from_disk(dataset_dir)
-
-    print(f"Downloading dataset {ds_key} to {dataset_dir}...")
-    ds = (
-      datasets.load_dataset(ds_key)
-      .filter(lambda item: verify_video(item, media_dir), num_proc=32)
-      # .map(lambda item: reencode(item, media_dir), num_proc=32)
+  def preprocess(self):
+    def _verify_video(item):
+      return verify_video(item, self.media_dir)
+    
+    self.ds = self.ds.filter(
+        _verify_video,
+        num_proc=self.NUM_PROC,
+        desc="Filtering out items with missing videos"
     )
-    # Print the number of items with each status, along with their video name
-    # status = {
-    #   'DNE': list(),
-    #   'Corrupted': list(),
-    #   'PyERROR': list(),
-    #   'OK': list()
-    # }
-    # for item in ds['train']:
-    #   status[item['status']].append(item['video'])
-    # for k, v in status.items():
-    #   print(f"Status {k}: {len(v)} items")
-    #   if k == 'OK':
-    #     continue
-    #   for vid in v:
-    #     print(f"  - {vid}")
-
-    # ds = ds.filter(lambda item: item['status'] == 'OK', num_proc=64)
-    if save_to_disk:
-      ds.save_to_disk(dataset_dir)
-
-    return ds
+    return self.ds
 
 def verify_video(item, media_dir):
   video_path = media_dir / item['video']

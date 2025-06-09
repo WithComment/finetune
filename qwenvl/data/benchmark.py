@@ -33,9 +33,9 @@ class Benchmark(GenericDataset, ABC):
     self.processor = copy.deepcopy(processor)
     self.proc_args = copy.deepcopy(proc_args)
     
-    self.dataset_dir, self.media_dir = self.get_dataset_dir(self.ds_key)
-    if not self.dataset_dir.exists():
+    self.ds_dir, self.media_dir = self.get_ds_config(self.ds_key)
+    if not self.ds_dir.exists():
       self.ds = self.download(ds_key, force=False, save_to_disk=False)[data_args.split]
     else:
-      self.ds = datasets.load_from_disk(self.dataset_dir)[data_args.split]
+      self.ds = datasets.load_from_disk(self.ds_dir)[data_args.split]
     self.bins = None

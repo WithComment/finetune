@@ -13,11 +13,16 @@ from qwenvl.train.argument import DataArguments, ModelArguments, ProcessingArgum
 from qwenvl.train.train_qwen import set_processor
 
 
-logger = logging.getLogger(__name__)
 
 from qwenvl.data import data_list, benchmark_classes
 from qwenvl.data.benchmark import Benchmark
 
+logging.basicConfig(
+  level=logging.INFO,
+  format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+  handlers=[logging.StreamHandler()]
+)
+logger = logging.getLogger(__name__)
 
 def log_header(
     model_path: str,
@@ -65,16 +70,18 @@ def _infer(
 ) -> list[dict]:
   result = []
   for idx in tqdm(gpu_indices, disable=torch.distributed.get_rank() != 0):
-    item = benchmark[idx]
+    item = benchmark.ds[idx]
+    conv = benchmark.make_conversation(item)
     with torch.no_grad():
       output_ids = model.generate(
-          **collate_fn(item).to(model.device),
+          **collate_fn(conv).to(model.device),
           **gen_config
       )
 
     output = processor.batch_decode(output_ids, skip_special_tokens=True)[0]
     pred = output.split("assistant")[-1].strip().strip("\n")
-    result.append(pred)
+    item['model_output'] = pred
+    result.append(benchmark.drop_non_json_fields(item))
 
   return result
 

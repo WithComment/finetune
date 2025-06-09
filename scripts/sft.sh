@@ -6,7 +6,6 @@
 #SBATCH --mem=0
 #SBATCH --ntasks-per-node=1
 #SBATCH -c 32
-#SBATCH --array=0-10%1
 #SBATCH --gres=gpu:4
 #SBATCH --partition=a40
 #SBATCH --open-mode=append

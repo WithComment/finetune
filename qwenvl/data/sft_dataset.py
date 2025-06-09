@@ -41,6 +41,7 @@ class SFTDataset(GenericDataset, ABC):
 
   def __init__(
       self,
+      name: str,
       processor: AutoProcessor,
       data_args: DataArguments,
       proc_args: ProcessingArguments,
@@ -48,18 +49,19 @@ class SFTDataset(GenericDataset, ABC):
   ):
     super(Dataset, self).__init__()
     self.use_cft = data_args.use_cft
-    dataset_dir, media_dir = self.get_dataset_dir(self.ds_key)
+    self.ds_config = self.get_ds_config(name)
     
+    self.ds_dir = self.ds_config['ds_dir']
     if sampling_rate < 1.0:
-      dataset_dir = dataset_dir.with_name(
-        f"{dataset_dir.name}_{sampling_rate}")
-
-    self.dataset_dir = dataset_dir
-    self.media_dir = media_dir
+      self.ds_dir = self.ds_dir.with_name(
+        f"{self.ds_dir.name}_{sampling_rate}")
+    self.media_dir = self.ds_config['media_dir']
+    self.ds_key = self.ds_config['ds_key']
+    
     self.processor = copy.deepcopy(processor)
     self.proc_args = copy.deepcopy(proc_args)
 
-    if data_args.count_tokens and not processed_the_same(dataset_dir, proc_args):
+    if data_args.count_tokens and not processed_the_same(self.ds_dir, proc_args):
       print("(Re)counting tokens.")
       print(f"Downloading dataset {data_args.dataset_use}...")
       
@@ -70,17 +72,17 @@ class SFTDataset(GenericDataset, ABC):
       
       self.ds = get_num_content_tokens(
           self.ds,
-          media_dir,
+          self.media_dir,
           processor=self.processor,
           proc_args=proc_args,
           get_content_fn=self.get_content,
           num_proc=32,
       )
-      save_w_proc_args(self.ds, dataset_dir, proc_args)
+      save_w_proc_args(self.ds, self.ds_dir, proc_args)
     else:
-      print(f"Loading dataset {dataset_dir} with the same processing arguments.")
+      print(f"Loading dataset {self.ds_dir} with the same processing arguments.")
       
-    self.ds = datasets.load_from_disk(dataset_dir)[data_args.split]
+    self.ds = datasets.load_from_disk(self.ds_dir)[data_args.split]
     self.tokenizer = self.processor.tokenizer
     self.make_conversation = partial(
       self._make_conversation,
@@ -105,10 +107,10 @@ class SFTDataset(GenericDataset, ABC):
     """
     Get packing bins for dataset.
     Save """
-    packing_bins_path = self.dataset_dir / 'packing_bins.json'
+    packing_bins_path = self.ds_dir / 'packing_bins.json'
     if (
         packing_bins_path.exists() and processed_the_same(
-        self.dataset_dir, self.proc_args, check_model_length=True)
+        self.ds_dir, self.proc_args, check_model_length=True)
     ):
       print(f"Loading packing bins from {packing_bins_path}")
       with open(packing_bins_path, 'r') as f:

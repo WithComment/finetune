@@ -11,23 +11,25 @@ class GenericDataset(Dataset, ABC):
   add_labels: bool
   add_generation_prompt: bool
   generation_config: dict
-  dataset_dir: Path
+  ds_dir: Path
   media_dir: Path | None
+  NUM_PROC = 32
 
   @staticmethod
-  def get_dataset_dir(ds_key: str) -> tuple[Path]:
+  def get_ds_config(name: str) -> dict[str, Path | str]:
     """
-    Get the dataset directory for the given dataset key.
+    Get the dataset config for the given dataset name.
     """
     with open(Path(__file__).parent / 'datasets.json', 'r') as f:
       ds_configs = json.load(f)
-    ds_config = ds_configs[ds_key]
-    ds_dir = Path(ds_config['dataset_dir'])
-    media_dir = ds_config.get('media_dir')
-    if media_dir:
-      media_dir = Path(media_dir)
-    return ds_dir, media_dir
-  
+    ds_config = ds_configs[name]
+    ds_config['ds_dir'] = Path(ds_config['ds_dir'])
+    if ds_config['media_dir'] is not None:
+      ds_config['media_dir'] = Path(ds_config['media_dir'])
+    
+    return ds_config
+
+
   def __len__(self):
     if self.bins:
       return len(self.bins)
@@ -57,6 +59,14 @@ class GenericDataset(Dataset, ABC):
       media_dir=self.media_dir,
       add_labels=self.add_labels
     )
+
+
+  def drop_non_json_fields(self, item: dict) -> dict:
+    """
+    Keep JSON serializable fields from the item.
+    """
+    return {k: v for k, v in item.items() if isinstance(v, (str, int, float, bool, list, dict))}
+
 
   @staticmethod
   @abstractmethod
@@ -89,17 +99,24 @@ class GenericDataset(Dataset, ABC):
     ]
     """
     raise NotImplementedError("Subclasses must implement this method.")
-
-
-  @classmethod
+  
+  
   @abstractmethod
-  def download(cls, ds_key, force) -> datasets.DatasetDict:
+  def preprocess(self) -> datasets.DatasetDict:
     """
-    Prepares the dataset up until steps that
-    depend on training/inference parameters.
-    I.e., after this step, the dataset should locate at the directory pointed by
-    dataset_dir of the datasets.json file.
-    And the dataset should be ready to create number of tokens.
-    This method should be implemented by subclasses.
+    Preprocess the dataset, so it is ready for `make_conversation`.
     """
-    raise NotImplementedError("Subclasses must implement this method.")
+    raise NotImplementedError()
+
+
+  def download_and_process(self, name) -> datasets.DatasetDict:
+    """
+    Download the dataset to HF_HOME.
+    Pre process the dataset.
+    And save to dataset_dir.
+    """
+    ds_config = self.get_ds_config(name)
+    self.ds = datasets.load_dataset(ds_config['ds_key'])
+    self.ds = self.preprocess(ds_config)
+    self.ds.save_to_disk(ds_config['ds_dir'])
+    return self.ds

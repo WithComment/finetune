@@ -22,7 +22,7 @@ from torch.utils.data import Dataset
 from transformers import Qwen2_5_VLProcessor
 from abc import ABC, abstractmethod
 
-from qwenvl.new.argument import DataArguments, ProcessingArguments
+from ..argument import DataArguments, ProcessingArguments
 from .utils import make_model_input
 from . import logger
 
@@ -193,9 +193,9 @@ class BaseDataset(Dataset, ABC):
     return conversation
     
   
-  def make_model_input(self, conversation: list[dict]) -> dict:
+  def make_model_input(self, batchconvo: list[dict]) -> dict:
     return make_model_input(
-      conversations=conversation,
+      conversations=batchconvo,
       processor=self.processor,
       proc_args=self.proc_args,
       for_training=self.for_training
@@ -206,16 +206,12 @@ class BaseDataset(Dataset, ABC):
     Transform a list of rows of the dataset into a dictionary suitable for model input.
     Including input_ids, attention_mask, image_pixel_values, etc.
     """
-    if isinstance(batch[0], list) and len(batch) > 1:
-      logger.warning(RuntimeWarning(
-        "Increase model_length if you want to process multiple rows at once."
-      ))
     if not isinstance(batch[0], list):
       batch = [batch]
-    items = list()
-    for item in batch:
-      items.append(self.make_conversation(item))
-    return self.make_model_input(items)
+    batch_convo = list()
+    for pack in batch:
+      batch_convo.append(self.make_conversation(pack))
+    return self.make_model_input(batch_convo)
 
 
   def __len__(self):

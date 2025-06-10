@@ -1,6 +1,6 @@
 import torch
-from qwenvl.new.argument import *
-from qwenvl.new.train import make_data_module, set_processor
+from ..argument import *
+from ..train import make_data_module, set_processor
 
 from . import logger
 
@@ -23,6 +23,4 @@ if __name__ == "__main__":
   data_module = make_data_module(
       processor=processor, data_args=data_args, proc_args=proc_args, for_training=True
   )
-  
-  exit(0)
   

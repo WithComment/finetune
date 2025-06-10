@@ -2,8 +2,8 @@ import json
 from typing import Callable
 import datasets
 from transformers import AutoTokenizer, Qwen2_5_VLProcessor
-from qwenvl.new.argument import ProcessingArguments, DataArguments
-from qwenvl.new.packing import fast_best_fit_decreasing
+from ..argument import ProcessingArguments, DataArguments
+from .packing import fast_best_fit_decreasing
 from .utils import get_image, get_video_frames
 from .base import BaseDataset
 

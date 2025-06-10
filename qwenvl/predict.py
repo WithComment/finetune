@@ -1,74 +1,161 @@
-import json
 from pathlib import Path
-import torch
-from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration, GenerationConfig, Seq2SeqTrainingArguments, Seq2SeqTrainer
-from qwenvl.new.argument import *
-from qwenvl.new.data import avail_datasets, BenchmarkDataset
-
-from .utils import get_logger
-from .train import rank0_make_data_module, set_processor
-
+import os
+import json
+from typing import Callable
+from tqdm import tqdm
+from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
 import logging
+import torch
 import torch.distributed as dist
+import transformers
 
-logger = get_logger(__name__) 
+from .argument import DataArguments, ModelArguments, ProcessingArguments
+from .train import make_data_module, rank0_make_data_module, set_processor
+from .utils import get_logger
+from .data import (
+    BenchmarkDataset
+)
+logger = get_logger(__name__)
 
-def rank0_print(*args, lvl="INFO"):
-  lvl = getattr(logging, lvl.upper(), logging.INFO)
-  if not dist.is_initialized() or dist.get_rank() == 0:
-    logger.log(level=lvl, *args)
-
-
-def get_trainer_args(eval_args):
-  return Seq2SeqTrainingArguments(
-    per_device_eval_batch_size=1,
-    predict_with_generate=True,
-    do_train=False,
-    do_eval=False,
-    do_predict=True,
-    generation_config=GenerationConfig(
-      max_new_tokens=eval_args.max_new_tokens,
-      do_sample=eval_args.do_sample,
-    )
-  )
+def log_header(
+    model_path: str,
+    data_args: DataArguments,
+    world_size: int,
+    logger: logging.Logger,
+):
+  logger.info(f"Running on {world_size} GPUs")
+  logger.info(f"benchmark: {data_args}")
+  logger.info(f"Model: {model_path}")
 
 
-def get_generated_text(model_output, tokenizer):
-  np_array = model_output.predictions.copy()
-  np_array[np_array == -100] = tokenizer.pad_token_id
-  texts = tokenizer.batch_decode(np_array, skip_special_tokens=True)
-  generated = list()
-  for text in texts:
-    text = text.split("assistant")[-1].strip().strip("\n")
-    generated.append(text)
-  return generated
-
-
-def save_result(
-    dataset: BenchmarkDataset,
-    generated_text: list[str],
-    output_dir: Path
-) -> Path:
-  output_dir.mkdir(parents=True, exist_ok=True)
-  output_file_path = output_dir / "eval_results.json"
-  results = []
-  for item, text in zip(dataset, generated_text):
-    item['model_output'] = text
-    results.append(dataset.drop_non_json_fields(item))
-  with open(output_file_path, 'w') as f:
-    json.dump(results, f, indent=2)
-    
-  return output_file_path
-
-
-def predict(data_args, proc_args, eval_args):
-  
+def load_pretrained_qwen(model_path, device):
+  """Load the Qwen model and processor."""
+  logger.info(f"Loading {model_path} on device {device}")
   model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-      eval_args.model_name_or_path,
-      torch_dtype='auto',
+      model_path,
+      device_map={"": device},
+      torch_dtype=torch.float16,
       attn_implementation="flash_attention_2"
   )
-  processor = AutoProcessor.from_pretrained(eval_args.model_name_or_path)
+  processor = AutoProcessor.from_pretrained(model_path)
+  return model, processor
+
+
+def get_gpu_indices(
+    benchmark: BenchmarkDataset,
+    world_size: int,
+    local_rank: int
+) -> range:
+  """Split the benchmark across multiple GPUs."""
+  items_per_gpu = len(benchmark) // world_size
+  start_idx = local_rank * items_per_gpu
+  end_idx = start_idx + items_per_gpu
+  return range(start_idx, end_idx)
+
+
+def _infer(
+    model,
+    benchmark: BenchmarkDataset,
+    gpu_indices: list[dict],
+    collate_fn: callable,
+    gen_config: dict,
+    processor: AutoProcessor,
+) -> list[dict]:
+  result = []
+  for idx in tqdm(gpu_indices, disable=torch.distributed.get_rank() != 0):
+    batch = benchmark[idx]
+    with torch.no_grad():
+      output_ids = model.generate(
+          **collate_fn(batch).to(model.device),
+          **gen_config
+      )
+
+    outputs = processor.batch_decode(output_ids, skip_special_tokens=True)
+    for item, output in zip(batch, outputs):
+      output = output.split("assistant")[-1].strip().strip("\n")
+      item['model_answer'] = output
+      result.append(benchmark.drop_non_json_fields(item))
+  return result
+
+
+def save_gpu_result(
+    result: list[dict],
+    rank: int,
+    output_dir: Path,
+) -> None:
+  with open(output_dir / f'temp_{rank}.jsonl', 'w') as f:
+    for item in result:
+      f.write(json.dumps(item) + '\n')
+
+
+def gather_result(
+    world_size,
+    output_dir: Path,
+):
+  all_result = []
+  # Gather result from all GPUs
+  for rank in range(world_size):
+    with open(output_dir / f"temp_{rank}.jsonl", 'r') as f:
+      rank_result = [json.loads(line) for line in f]
+      all_result.extend(rank_result)
+
+  with open(output_dir / 'results.jsonl', 'w') as f:
+    for item in all_result:
+      f.write(json.dumps(item) + '\n')
+
+  # Clean up temporary files
+  for rank in range(world_size):
+    temp_file = output_dir / f"temp_{rank}.jsonl"
+    if temp_file.exists():
+      temp_file.unlink()
+
+  logger.info(f"Inference complete. result saved to {output_dir / 'results.jsonl'}")
+  logger.info(f"Total processed samples: {len(all_result)}")
+
+  return all_result
+
+
+def eval_on_one_benchmark(
+    model: Qwen2_5_VLForConditionalGeneration,
+    world_size: int,
+    local_rank: int,
+    output_dir: Path,
+    benchmark: BenchmarkDataset,
+    collate_fn: Callable,
+    gen_config: dict,
+) -> None:
+  if not output_dir.exists():
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+  gpu_result = _infer(
+      model,
+      benchmark,
+      gpu_indices=get_gpu_indices(benchmark, world_size, local_rank),
+      collate_fn=collate_fn,
+      gen_config=gen_config,
+      processor=benchmark.processor,
+  )
+  save_gpu_result(gpu_result, local_rank, output_dir)
+
+  dist.barrier()
+  if local_rank == 0:
+    final_result = gather_result(world_size, output_dir)
+  dist.barrier()
+  
+
+def main(
+    model_path: str,
+    data_args: DataArguments,
+    proc_args: ProcessingArguments,
+):
+  """Run inference on the benchmark using Qwen2-VL."""
+  dist.init_process_group(backend="nccl")
+
+  world_size = dist.get_world_size()
+  local_rank = dist.get_rank()
+  device = f"cuda:{local_rank}"
+
+  model, processor = load_pretrained_qwen(model_path, device)
   processor = set_processor(processor, proc_args, data_args)
   data_module = rank0_make_data_module(
       processor=processor,
@@ -76,23 +163,39 @@ def predict(data_args, proc_args, eval_args):
       proc_args=proc_args,
       for_training=False
   )
-  trainer_args = get_trainer_args(eval_args)
+  if local_rank == 0:
+    log_header(model_path, data_args, world_size, logger)
 
-  trainer = Seq2SeqTrainer(
-      model=model,
-      processing_class=processor,
-      args=trainer_args,
-      **data_module
+  eval_dataset = data_module['eval_dataset']
+  collate_fn = data_module['data_collator']
+  
+  output_dir = data_module['eval_dataset'].ds_dir / "results" / model_path
+  eval_on_one_benchmark(
+      model,
+      world_size=world_size,
+      local_rank=local_rank,
+      output_dir=output_dir,
+      benchmark=eval_dataset,
+      collate_fn=collate_fn,
+      gen_config={
+          'max_new_tokens': 32,
+          'do_sample': False,
+      }
   )
-  output = trainer.predict(trainer.eval_dataset)
-  generated_text = get_generated_text(output, processor.tokenizer)
-  if eval_args.output_dir is not None:
-    output_dir = Path(eval_args.output_dir)
-  else:
-    output_dir = Path(eval_args.model_name_or_path)
-  save_result(data_module['eval_dataset'], generated_text, output_dir)
-      
+  dist.destroy_process_group()
+  return 0
+
+
 if __name__ == "__main__":
-  parser = transformers.HfArgumentParser((DataArguments, ProcessingArguments, EvalArguments))
-  data_args, proc_args, eval_args = parser.parse_args_into_dataclasses()
-  predict(data_args, proc_args, eval_args)
+  parser = transformers.HfArgumentParser((
+      ModelArguments,
+      DataArguments,
+      ProcessingArguments,
+  ))
+  model_args, data_args, proc_args = parser.parse_args_into_dataclasses()
+  
+  main(
+      model_args.model_name_or_path,
+      data_args,
+      proc_args,
+  )

@@ -14,7 +14,7 @@ from transformers import AutoProcessor, PreTrainedTokenizer, Qwen2_5_VLProcessor
 import base64
 from io import BytesIO
 
-from qwenvl.new.argument import ProcessingArguments
+from ..argument import ProcessingArguments
 
 PLACEHOLDER_IDS = {151654, 151655, 151656}
 torch.set_num_threads(1)
@@ -203,8 +203,6 @@ def get_batch_images_and_videos(
   images = list()
   videos = list()
   fpss = list()
-  if isinstance(conversations[0], dict):
-    conversations = [conversations]
   for conversation in conversations:
     imgs, vids, fps = get_images_and_videos(
         conversation, vid_proc_args
@@ -224,7 +222,7 @@ def get_batch_images_and_videos(
 
 
 def make_model_input(
-    conversations: list[dict],
+    conversations: list[list[dict]],
     processor: Qwen2_5_VLProcessor,
     proc_args: ProcessingArguments,
     for_training: bool

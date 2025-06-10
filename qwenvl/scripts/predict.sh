@@ -27,9 +27,14 @@ export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 
 dataset_use=$1
+model_use=$2
+if [ -z "$model_use" ]; then
+  echo "No model specified, using default: 'Qwen/Qwen2.5-VL-3B-Instruct'"
+  dataset_use="Qwen/Qwen2.5-VL-3B-Instruct"
+fi
 
-model_args="
-  --model_name_or_path Qwen/Qwen2.5-VL-3B-Instruct"
+eval_args="
+  --model_name_or_path ${model_use}"
 
 data_args="
     --dataset_use ${dataset_use} \
@@ -38,11 +43,11 @@ data_args="
 proc_args=""
 
 args="
-    ${model_args} \
+    ${eval_args} \
     ${data_args} \
     ${proc_args}"
 
 
 torchrun --nproc_per_node=$NPROC_PER_NODE \
               --nnodes=1 \
-              -m qwenvl.test.infer ${args}
+              -m qwenvl.predict ${args}

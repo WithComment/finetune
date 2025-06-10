@@ -68,7 +68,7 @@ class EvalArguments:
       default=None,
       metadata={"help": "Directory to save the evaluation results."}
   )
-  # deepspeed: str = field(
-  #     default=None,
-  #     metadata={"help": "Path to the deepspeed configuration file."}
-  # )
+  deepspeed: str = field(
+      default=None,
+      metadata={"help": "Path to the deepspeed configuration file."}
+  )

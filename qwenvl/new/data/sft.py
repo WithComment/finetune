@@ -1,0 +1,136 @@
+import json
+from typing import Callable
+import datasets
+from transformers import AutoTokenizer, Qwen2_5_VLProcessor
+from qwenvl.new.argument import ProcessingArguments, DataArguments
+from qwenvl.new.packing import fast_best_fit_decreasing
+from .utils import get_image, get_video_frames
+from .base import BaseDataset
+
+
+class SFTDataset(BaseDataset):
+  
+  for_training: bool = True
+  
+  def __init__(
+      self,
+      name: str,
+      processor: Qwen2_5_VLProcessor,
+      proc_args: ProcessingArguments,
+      data_args: DataArguments,
+      force: bool = False
+  ) -> None:
+    super().__init__(name, processor, proc_args, data_args, force)
+    # Count content tokens if required.
+    if not data_args.data_packing:
+      self.bins = [[i] for i in range(len(self.ds))]
+      return
+    
+    if self.need_num_content_tokens():
+      self.get_num_content_tokens()
+    num_tokens = self.get_num_tokens()
+    self.bins = fast_best_fit_decreasing(
+      num_tokens, data_args.model_max_length
+    )
+      
+  
+  def need_num_content_tokens(self) -> bool:
+    """
+    Returns `True` if
+    - the dataset does not have the num_content_tokens field,
+    - a proc_args.json file is not saved with the dataset,
+    - the old proc_args does not match the current proc_args.
+    """
+    if (
+        'num_content_tokens' not in self.ds.features
+        or 'media_count' not in self.ds.features
+    ):
+      return True
+    proc_args_path = self.ds_dir / 'proc_args.json'
+    if not proc_args_path.exists():
+      return True
+    
+    with open(proc_args_path, 'r') as f:
+      og_proc_args = ProcessingArguments(**json.load(f))
+      
+    if og_proc_args != self.proc_args:
+      return True
+    
+    return False
+    
+  
+  @staticmethod
+  def _get_num_content_tokens(
+      ds: datasets.Dataset,
+      processor: Qwen2_5_VLProcessor,
+      proc_args: ProcessingArguments,
+      get_content_fn: Callable
+  ):
+    """
+    Get the number of content tokens.
+    Content are defined by the `get_content` method.
+    """
+    def _get_num_content_tokens(item):
+      texts, images, videos = get_content_fn(item)
+
+      num_tokens = 0
+      for text in texts:
+        num_tokens += len(processor.tokenizer.encode(text))
+    
+      for img in images:
+        img = get_image(img)
+        result = processor.image_processor(img)
+        num_tokens += result['image_grid_thw'].prod() // 4
+      
+      for vid in videos:
+        vid, fps = get_video_frames(vid, proc_args)
+        result = processor.video_processor(vid, fps=fps)
+        num_tokens += result['video_grid_thw'].prod() // 4
+      
+      item['media_count'] = len(images) + len(videos)      
+      item['num_content_tokens'] = num_tokens
+      return item
+
+    return ds.map(
+      _get_num_content_tokens,
+      num_proc=BaseDataset.NUM_PROC,
+      desc="Counting content tokens",
+    )
+    
+  def get_num_content_tokens(self):
+    """
+    Operate on all splits.
+    Get the number of content tokens for each item in the dataset.
+    The dataset source will always be HF_HOME. 
+    Save the field num_content_tokens to the dataset,
+    along with the processing arguments that affect the content token count.
+    """
+    self.ds = datasets.load_dataset(self.ds_key)
+    self.preprocess()
+    self.ds = self._get_num_content_tokens(
+      self.ds,
+      self.processor,
+      self.proc_args,
+      self.get_content
+    )
+    proc_args_path = self.ds_dir / 'proc_args.json'
+    with open(proc_args_path, 'w') as f:
+      json.dump(self.proc_args.__dict__, f, indent=2)
+    self.ds.save_to_disk(self.ds_dir)
+    self.ds = self.ds[self.split]
+    return self.ds
+  
+  def get_num_tokens(self):
+    
+    tokenizer = self.processor.tokenizer
+    def _get_num_tokens(item):
+      tokens = tokenizer.apply_chat_template(self.make_conversation(item))
+      media_count = item['media_count']
+      item['num_tokens'] = len(tokens) - media_count + item['num_content_tokens']
+      return item
+
+    return self.ds.map(
+        _get_num_tokens,
+        num_proc=BaseDataset.NUM_PROC,
+        desc="Counting total tokens",
+    )['num_tokens']

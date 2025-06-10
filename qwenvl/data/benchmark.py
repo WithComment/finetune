@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 from transformers import AutoProcessor
 
 from qwenvl.data.generic_dataset import GenericDataset
-from qwenvl.train.argument import DataArguments, ProcessingArguments
+from qwenvl.train.argument import DataArguments, VisionArguments
 
 class Benchmark(GenericDataset, ABC):
   ds_key: str
@@ -22,7 +22,7 @@ class Benchmark(GenericDataset, ABC):
       self,
       processor: AutoProcessor,
       data_args: DataArguments,
-      proc_args: ProcessingArguments,
+      proc_args: VisionArguments,
       sampling_rate: float = 1.0,
       ds_key: str = None,
       dataset_dir: Path = None,

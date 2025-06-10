@@ -9,7 +9,7 @@ import torch
 import torch.distributed as dist
 import transformers
 
-from qwenvl.train.argument import DataArguments, ModelArguments, ProcessingArguments
+from qwenvl.train.argument import DataArguments, ModelArguments, VisionArguments
 from qwenvl.train.train_qwen import set_processor
 
 
@@ -168,7 +168,7 @@ def make_data_module(processor, data_args, proc_args):
 def main(
     model_path: str,
     data_args: DataArguments,
-    proc_args: ProcessingArguments,
+    proc_args: VisionArguments,
 ):
   """Run inference on the benchmark using Qwen2-VL."""
   dist.init_process_group(backend="nccl")
@@ -209,7 +209,7 @@ if __name__ == "__main__":
   parser = transformers.HfArgumentParser((
       ModelArguments,
       DataArguments,
-      ProcessingArguments,
+      VisionArguments,
   ))
   model_args, data_args, proc_args = parser.parse_args_into_dataclasses()
   

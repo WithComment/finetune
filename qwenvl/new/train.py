@@ -28,15 +28,10 @@ import torch
 import torch.distributed as dist
 import pathlib
 
-from qwenvl.data import data_list, dataset_classes
-from qwenvl.data.openbiomedvid import OpenbiomedvidDataset
-from qwenvl.train.argument import (
-    ModelArguments,
-    DataArguments,
-    TrainingArguments,
-    VisionArguments
-)
-import qwenvl.train.trainer
+from .utils import get_logger
+
+from .data import avail_datasets, SFTDataset, BenchmarkDataset
+from .argument import *
 
 from transformers import Trainer, Qwen2_5_VLForConditionalGeneration
 
@@ -46,12 +41,16 @@ hf_logging.set_verbosity_error()
 torch.set_num_threads(1)
 
 
-def rank0_print(*args):
+logger = get_logger(__name__)
+
+
+def rank0_print(*args, lvl="INFO"):
+  lvl = getattr(logging, lvl.upper(), logging.INFO)
   if dist.get_rank() == 0:
-    print(*args)
+    logger.log(level=lvl, *args)
 
 
-def set_model(model_args, model):
+def set_model(model, model_args):
   if model_args.tune_mm_vision:
     for n, p in model.visual.named_parameters():
       p.requires_grad = True
@@ -76,46 +75,55 @@ def set_model(model_args, model):
     model.lm_head.requires_grad = False
   return model
 
-def set_processor(processor_args, processor):
+
+def set_processor(processor, proc_args: ProcessingArguments, data_args: DataArguments):
   tokenizer = processor.tokenizer
   img_processor = processor.image_processor
   vid_processor = processor.video_processor
 
-  tokenizer.padding_side = processor_args.padding_side
-  tokenizer.model_max_length = processor_args.model_max_length
+  tokenizer.model_max_length = data_args.model_max_length
 
-  img_processor.max_pixels = processor_args.image_max_pixels
-  img_processor.min_pixels = processor_args.image_min_pixels
-  img_processor.size["shortest_edge"] = processor_args.shortest_edge
+  img_processor.max_pixels = proc_args.image_max_pixels
+  img_processor.min_pixels = proc_args.image_min_pixels
+  img_processor.size["shortest_edge"] = proc_args.shortest_edge
 
-  vid_processor.min_pixels = processor_args.video_min_pixels
-  vid_processor.max_pixels = processor_args.video_max_pixels
-  vid_processor.min_frame_pixels = processor_args.video_min_pixels
-  vid_processor.max_frame_pixels = processor_args.video_max_pixels
-  vid_processor.size['shortest_edge'] = processor_args.shortest_edge
-  vid_processor.default_to_square = processor_args.video_default_to_square
+  vid_processor.min_pixels = proc_args.video_min_pixels
+  vid_processor.max_pixels = proc_args.video_max_pixels
+  vid_processor.min_frame_pixels = proc_args.video_min_pixels
+  vid_processor.max_frame_pixels = proc_args.video_max_pixels
+  vid_processor.size['shortest_edge'] = proc_args.shortest_edge
+  vid_processor.default_to_square = proc_args.video_default_to_square
 
   return processor
 
 
-def make_data_module(processor, data_args, proc_args):
-  """Make dataset and collator for supervised fine-tuning."""
-  dataset_config = data_list(data_args.dataset_use.split(","))[0]
-  dataset_class = dataset_classes[dataset_config['ds_class']]
-  if dataset_class == OpenbiomedvidDataset and data_args.data_packing:
-    print(RuntimeWarning("Packing is not supported with Openbiomedvid. Useing data_packing=False"))
-    data_args.data_packing = False
-  train_dataset = dataset_class(
-      
+def make_data_module(
+    processor,
+    data_args,
+    proc_args,
+    for_training=True
+):
+  """Make dataset and collator for training or evaluation."""
+  ds_name = data_args.dataset_use
+  ds_class = avail_datasets[ds_name]['ds_class']
+  
+  if for_training:
+    assert issubclass(ds_class, SFTDataset)
+  else:
+    assert issubclass(ds_class, BenchmarkDataset)
+    
+  ds = ds_class(
+      name=ds_name,
       processor=processor,
       proc_args=proc_args,
       data_args=data_args,
-      sampling_rate=dataset_config['sampling_rate']
   )
-  collate_fn = train_dataset.make_model_input
-  return dict(
-      train_dataset=train_dataset, eval_dataset=None, data_collator=collate_fn
-  )
+  collate_fn = ds.collate_fn
+  return {
+      'train_dataset': ds if for_training else None,
+      'eval_dataset': ds if not for_training else None,
+      'data_collator': collate_fn,
+  }
 
 
 SLURM_PREEMPTION_SIGNAL_RECEIVED = False
@@ -143,16 +151,22 @@ class SlurmPreemptionCallback(TrainerCallback):
     dist.barrier()
 
 
+def rank0_make_data_module(*args, **kwargs):
+  data_module = None
+  if not dist.is_initialized():
+    return make_data_module(*args, **kwargs)
+  if dist.get_rank() == 0:
+    data_module = make_data_module(*args, **kwargs)
+  dist.barrier()
+  return data_module or make_data_module(*args, **kwargs)
+
+
 def train(attn_implementation="flash_attention_2"):
-  if "SLURM_PROCID" in os.environ:
-    dist.init_process_group(backend='nccl')
-  
   if dist.is_initialized():
     rank = dist.get_rank()
     world_size = dist.get_world_size()
-    print(
-        f"Hello from Slurm! Rank {rank}/{world_size}",
-        flush=True)
+    rank0_print(
+        f"Hello from Slurm! Rank {rank}/{world_size}")
 
   signal.signal(signal.SIGUSR1, handle_preemption_signal)
 
@@ -160,7 +174,7 @@ def train(attn_implementation="flash_attention_2"):
       ModelArguments,
       DataArguments,
       TrainingArguments,
-      VisionArguments,
+      ProcessingArguments,
   ))
 
   model_args, data_args, training_args, proc_args = parser.parse_args_into_dataclasses()
@@ -170,18 +184,13 @@ def train(attn_implementation="flash_attention_2"):
       use_fast=True,
   )
 
-  processor = set_processor(proc_args, processor)
-
-  data_module = None
-  if dist.get_rank() == 0:
-    data_module = make_data_module(
-        processor=processor, data_args=data_args, proc_args=proc_args
-    )
-    rank0_print(
-        f"Data module created with {len(data_module['train_dataset'])} training samples.")
-  dist.barrier()
-  data_module = data_module or make_data_module(
-      processor=processor, data_args=data_args, proc_args=proc_args
+  processor = set_processor(processor, proc_args, data_args)
+  
+  data_module = rank0_make_data_module(
+      processor=processor,
+      data_args=data_args,
+      proc_args=proc_args,
+      for_training=True
   )
 
   model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
@@ -189,7 +198,7 @@ def train(attn_implementation="flash_attention_2"):
       attn_implementation=attn_implementation,
       torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
   )
-  model = set_model(model_args, model)
+  model = set_model(model, model_args)
   if dist.get_rank() == 0:
     model.visual.print_trainable_parameters()
     model.model.print_trainable_parameters()

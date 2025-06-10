@@ -15,7 +15,7 @@ from transformers import AutoProcessor
 from qwenvl.data.generic_dataset import GenericDataset
 from qwenvl.data.packing import fast_best_fit_decreasing
 from qwenvl.data.utils import get_batch_images_and_videos, get_image, get_num_content_tokens, get_num_tokens, get_video_frames, make_model_input, save_w_proc_args, processed_the_same
-from qwenvl.train.argument import DataArguments, ProcessingArguments
+from qwenvl.train.argument import DataArguments, VisionArguments
 
 DEBUG = os.environ.get('DEBUG', '0') == '1'
 
@@ -44,7 +44,7 @@ class SFTDataset(GenericDataset, ABC):
       name: str,
       processor: AutoProcessor,
       data_args: DataArguments,
-      proc_args: ProcessingArguments,
+      proc_args: VisionArguments,
       sampling_rate: float = 1.0,
   ):
     super(Dataset, self).__init__()

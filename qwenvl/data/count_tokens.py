@@ -8,7 +8,7 @@ if __name__ == "__main__":
   parser = transformers.HfArgumentParser((
       ModelArguments,
       DataArguments,
-      ProcessingArguments,
+      VisionArguments,
   ))
 
   model_args, data_args, proc_args = parser.parse_args_into_dataclasses()

@@ -32,7 +32,7 @@ dataset_use=$1
 model_use=$2
 if [ -z "$model_use" ]; then
   echo "No model specified, using default: 'Qwen/Qwen2.5-VL-3B-Instruct'"
-  dataset_use="Qwen/Qwen2.5-VL-3B-Instruct"
+  model_use="Qwen/Qwen2.5-VL-3B-Instruct"
 fi
 
 eval_args="

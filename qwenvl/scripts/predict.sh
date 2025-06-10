@@ -16,6 +16,8 @@
 #SBATCH --requeue
 #SBATCH --signal=B:USR1@180
 
+source /fs01/projects/cft_vlm/.venv/bin/activate
+
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 export MASTER_PORT=29500
 export WORLD_SIZE=$SLURM_NTASKS
@@ -46,7 +48,6 @@ args="
     ${eval_args} \
     ${data_args} \
     ${proc_args}"
-
 
 torchrun --nproc_per_node=$NPROC_PER_NODE \
               --nnodes=1 \

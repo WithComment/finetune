@@ -15,9 +15,7 @@
 #SBATCH --requeue
 #SBATCH --signal=B:USR1@180
 
-
-# Create logs directory if it doesn't exist
-mkdir -p logs
+source /fs01/projects/cft_vlm/.venv/bin/activate
 
 # Set distributed training environment variables
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)

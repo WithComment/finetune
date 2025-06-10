@@ -1,52 +1,38 @@
-import re
-from pathlib import Path
+from ..utils import get_logger
 
-from qwenvl.data.benchmark import Benchmark
-from qwenvl.data.openbiomedvid import OpenbiomedvidDataset
-from qwenvl.data.openpmc import OpenpmcDataset
-from qwenvl.data.sft_dataset import SFTDataset
-from qwenvl.data.vqa import VQADataset
+logger = get_logger(__name__)
 
-dataset_classes: dict[str, SFTDataset] = {
-    'openpmc': OpenpmcDataset,
-    'openbiomedvid': OpenbiomedvidDataset,
+from .base import BaseDataset
+from .sft import SFTDataset
+from .openbiomedvid import OpenbiomedvidDataset
+from .openpmc import OpenpmcDataset
+
+from .benchmark import BenchmarkDataset
+from .vqa import VQADataset
+
+avail_datasets = {
+  "path-vqa": {
+    "ds_dir": "/projects/cft_vlm/datasets/path_vqa/data/dataset",
+    "media_dir": None,
+    "ds_class": VQADataset,
+    "ds_key": "flaviagiammarino/path-vqa"
+  },
+  "vqa-rad": {
+    "ds_dir": "/projects/cft_vlm/datasets/vqa_rad/data/dataset",
+    "media_dir": None,
+    "ds_class": VQADataset,
+    "ds_key": "flaviagiammarino/vqa-rad"
+  },
+  "open-pmc": {
+    "ds_dir": "/projects/cft_vlm/datasets/open_pmc/data/dataset",
+    "media_dir": None,
+    "ds_class": OpenpmcDataset,
+    "ds_key": "vector-institute/open-pmc"
+  },
+  "openbiomedvid": {
+    "ds_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/dataset",
+    "media_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/vid_reencoded",
+    "ds_class": OpenbiomedvidDataset,
+    "ds_key": "connectthapa84/OpenBiomedVid"
+  }
 }
-benchmark_classes: dict[str, Benchmark] = {
-    'vqa': VQADataset,
-}
-
-def parse_sampling_rate(dataset_name):
-  match = re.search(r"%(\d+)$", dataset_name)
-  if match:
-    return int(match.group(1)) / 100.0
-  return 1.0
-
-
-def data_list(dataset_names):
-  ds_path = Path(__file__).parent / 'datasets.json'
-  with open(ds_path, 'r') as f:
-    import json
-    data_dict = json.load(f)
-    
-  config_list = []
-  for ds_name in dataset_names:
-    if '%' in ds_name:
-      ds_name, sampling_rate = ds_name.split('%')
-      sampling_rate = float(sampling_rate) / 100
-    else:
-      sampling_rate = 1.0
-    
-    if ds_name in data_dict.keys():
-      config = data_dict[ds_name].copy()
-      config["sampling_rate"] = sampling_rate
-      config_list.append(config)
-    else:
-      raise ValueError(f"Cannot find {ds_name}")
-  return config_list
-
-
-if __name__ == "__main__":
-  dataset_names = ["openbiomedvid"]
-  configs = data_list(dataset_names)
-  for config in configs:
-    print(config)

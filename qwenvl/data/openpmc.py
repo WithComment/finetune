@@ -7,8 +7,8 @@ import random
 import datasets
 import PIL.Image as PILImage
 
-from qwenvl.data.sft_dataset import SFTDataset
-from qwenvl.data.utils import filter_image, get_media
+from .sft import SFTDataset
+from .utils import filter_image
 
 
 IMG_PROMPTS = (
@@ -26,17 +26,11 @@ IMG_PROMPTS = (
 
 class OpenpmcDataset(SFTDataset):
   """
-  OpenPMC dataset for training and evaluation.
+  OpenPMC dataset for training.
   """
 
-  add_labels: bool = True
-  add_generation_prompt: bool = False
-
   @staticmethod
-  def get_content(item):
-    """
-    Extracts text, images, and videos from an OpenPMC item.
-    """
+  def _get_content(item, media_dir):
     texts = [item['intext_refs_summary'] or item['intext_refs']]
     texts.append(item['sub_caption'])
     images = [item['image']]
@@ -46,7 +40,7 @@ class OpenpmcDataset(SFTDataset):
 
 
   @staticmethod
-  def _make_conversation(item, media_dir, use_cft=False):
+  def _make_conversation(item, media_dir, use_cft):
     conversation = list()
     if use_cft:
       raise NotImplementedError()
@@ -81,28 +75,27 @@ class OpenpmcDataset(SFTDataset):
     })
     return conversation
   
-  @staticmethod
-  def filter_image(item):
-    """
-    Filter out items without an image.
-    """
-    return filter_image(item, 'jpg', '__key__')
-  
-  @staticmethod
-  def load_jsonl(item):
-    return json.loads(item['jsonl'])
 
-  def preprocess(self) -> datasets.DatasetDict:
+  @staticmethod
+  def _preprocess(ds, media_dir, num_proc) -> datasets.DatasetDict:
+    
+    def _filter_image(item):
+      """
+      Filter out items without an image.
+      """
+      return filter_image(item, 'jpg', '__key__')
+    
+    def _load_jsonl(item):
+      return json.loads(item['jsonl'])
 
-    self.ds = (self.ds
-      .map(self.load_jsonl, num_proc=32, remove_columns=['jsonl'])
+    return (ds
+      .map(_load_jsonl, num_proc=num_proc, remove_columns=['jsonl'])
       .cast_column('jpg', datasets.Image(decode=False))
-      .filter(self.filter_image, num_proc=32)
+      .filter(_filter_image, num_proc=num_proc)
       .cast_column('jpg', datasets.Image(decode=True))
       .remove_columns(['image'])
       .rename_column('jpg', 'image')
     )
-    return self.ds
 
 if __name__ == "__main__":
-  OpenpmcDataset.download(force=True)
+  pass

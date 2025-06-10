@@ -1,17 +1,9 @@
-from io import BytesIO
-import json
 import logging
-import os
-from pathlib import Path
 import random
 import subprocess
 
-import cv2
-import datasets
-import PIL.Image as PILImage
 
-from qwenvl.data.sft_dataset import SFTDataset
-from qwenvl.data.utils import get_media
+from .sft import SFTDataset
 
 
 VID_PROMPTS = (
@@ -43,58 +35,56 @@ class OpenbiomedvidDataset(SFTDataset):
   Openbiomedvid dataset for training and evaluation.
   """
 
-  add_labels: bool = True
-  add_generation_prompt: bool = False
-
-
   @staticmethod
-  def get_content(item):
+  def _get_content(item, media_dir):
     texts = [item['caption']]
     images = list()
-    videos = [item['video']]
+    videos = [media_dir / item['video']]
 
     return texts, images, videos
 
   @staticmethod
-  def _make_conversation(item, media_dir, use_cft=False):
+  def _make_conversation(item, media_dir, use_cft):
     conversation = list()
     if use_cft:
       raise NotImplementedError()
 
     conversation.append({
-      'role': 'user',
-      'content': [
-          {
-          'type': 'video',
-          'video': str(media_dir / item['video'])
-        },
-        {
-          'type': 'text',
-          'text': random.choice(VID_PROMPTS)
-        },
-      ]
+        'role': 'user',
+        'content': [
+            {
+                'type': 'video',
+                'video': str(media_dir / item['video'])
+            },
+            {
+                'type': 'text',
+                'text': random.choice(VID_PROMPTS)
+            },
+        ]
     })
     conversation.append({
         'role': 'assistant',
-      'content': [
-          {
-            'type': 'text',
-          'text': item['caption']
-        }
-      ]
+        'content': [
+            {
+                'type': 'text',
+                'text': item['caption']
+            }
+        ]
     })
     return conversation
 
-  def preprocess(self):
+  @staticmethod
+  def _preprocess(ds, media_dir, num_proc):
     def _verify_video(item):
-      return verify_video(item, self.media_dir)
-    
-    self.ds = self.ds.filter(
+      return verify_video(item, media_dir)
+
+    ds = ds.filter(
         _verify_video,
-        num_proc=self.NUM_PROC,
+        num_proc=num_proc,
         desc="Filtering out items with missing videos"
     )
-    return self.ds
+    return ds
+
 
 def verify_video(item, media_dir):
   video_path = media_dir / item['video']
@@ -103,13 +93,14 @@ def verify_video(item, media_dir):
 
 logger = logging.getLogger(__name__)
 
+
 def reencode(item, media_dir):
   output_path = media_dir.parent / 'vid_reencoded' / item['video']
   video_path = media_dir / item['video']
   if not video_path.exists():
     item['status'] = 'DNE'
     return item
-  
+
   cmd = [
       "ffmpeg",
       "-y",
@@ -135,12 +126,6 @@ def reencode(item, media_dir):
     logger.error(f"🚨 Error processing {video_path}: {e}")
     item['status'] = 'PyERROR'
     return item
-  
+
   item['status'] = 'OK'
   return item
-
-
-if __name__ == "__main__":
-  ds = OpenbiomedvidDataset.download(force=True)
-  print(f"Dataset downloaded: {ds}")
-  print(f"Number of examples: {len(ds)}")

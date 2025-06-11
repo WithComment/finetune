@@ -273,9 +273,9 @@ def train(attn_implementation="flash_attention_2"):
 
   # When training completes normally without preemption.
   trainer.save_state()
+  trainer.save_model(training_args.output_dir)
   if trainer.is_world_process_zero():
     processor.save_pretrained(training_args.output_dir)
-    trainer.save_model(training_args.output_dir)
 
 
 if __name__ == "__main__":

@@ -63,15 +63,17 @@ def _infer(
 ) -> list[dict]:
   result = []
   for idx in tqdm(gpu_indices, disable=torch.distributed.get_rank() != 0):
-    batch = benchmark[idx]
+    item = benchmark[idx]
+    print(item)
+    exit(0)
     with torch.no_grad():
       output_ids = model.generate(
-          **collate_fn(batch).to(model.device),
+          **collate_fn(item).to(model.device),
           **gen_config
       )
 
     outputs = processor.batch_decode(output_ids, skip_special_tokens=True)
-    for item, output in zip(batch, outputs):
+    for item, output in zip(item, outputs):
       output = output.split("assistant")[-1].strip().strip("\n")
       item['model_answer'] = output
       result.append(benchmark.drop_non_json_fields(item))

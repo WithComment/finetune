@@ -49,12 +49,13 @@ data_args="
     --data_packing True \
     --use_cft False \
     --split train \
-    --model_max_length 3072"
+    --model_max_length 3072 \
+    --num_proc 24"
 
 proc_args=""
 
 train_args="
-    --deepspeed ./scripts/zero3.json \
+    --deepspeed /projects/cft_vlm/finetune/qwenvl/scripts/zero3.json \
     --optim adamw_torch \
     --output_dir ${output_dir} \
     --bf16 \

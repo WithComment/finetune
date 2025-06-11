@@ -209,7 +209,7 @@ def get_batch_images_and_videos(
     )
     images.append(imgs)
     videos.append(vids)
-    fpss.append(fps)
+    fpss.extend(fps)
   image_count = sum(len(imgs) for imgs in images)
   video_count = sum(len(vids) for vids in videos)
   

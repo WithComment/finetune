@@ -28,6 +28,9 @@ import torch
 import torch.distributed as dist
 import pathlib
 
+from qwenvl.data.base import BaseDataset
+from qwenvl.data.openbiomedvid import OpenbiomedvidDataset
+
 from .utils import get_logger
 
 from .data import avail_datasets, SFTDataset, BenchmarkDataset
@@ -44,13 +47,22 @@ torch.set_num_threads(1)
 logger = get_logger(__name__)
 
 
-def rank0_print(*args, lvl="INFO"):
+def rank0_print(msg, lvl="INFO"):
   lvl = getattr(logging, lvl.upper(), logging.INFO)
   if dist.get_rank() == 0:
-    logger.log(level=lvl, *args)
+    logger.log(level=lvl, msg=msg)
 
 
 def set_model(model, model_args):
+  """!!!Do not change the order!!!"""
+  if model_args.tune_mm_llm:
+    for n, p in model.model.named_parameters():
+      p.requires_grad = True
+    model.lm_head.requires_grad = True
+  else:
+    for n, p in model.model.named_parameters():
+      p.requires_grad = False
+    model.lm_head.requires_grad = False
   if model_args.tune_mm_vision:
     for n, p in model.visual.named_parameters():
       p.requires_grad = True
@@ -65,14 +77,6 @@ def set_model(model, model_args):
     for n, p in model.visual.merger.named_parameters():
       p.requires_grad = False
 
-  if model_args.tune_mm_llm:
-    for n, p in model.model.named_parameters():
-      p.requires_grad = True
-    model.lm_head.requires_grad = True
-  else:
-    for n, p in model.model.named_parameters():
-      p.requires_grad = False
-    model.lm_head.requires_grad = False
   return model
 
 
@@ -99,11 +103,12 @@ def set_processor(processor, proc_args: ProcessingArguments, data_args: DataArgu
 
 def make_data_module(
     processor,
-    data_args,
-    proc_args,
+    data_args: DataArguments,
+    proc_args: ProcessingArguments,
     for_training=True
 ):
   """Make dataset and collator for training or evaluation."""
+  BaseDataset.num_proc = data_args.num_proc
   ds_name = data_args.dataset_use
   ds_class = avail_datasets[ds_name]['ds_class']
   
@@ -111,6 +116,10 @@ def make_data_module(
     assert issubclass(ds_class, SFTDataset)
   else:
     assert issubclass(ds_class, BenchmarkDataset)
+    
+  if issubclass(ds_class, OpenbiomedvidDataset) and data_args.data_packing:
+    logger.warning("OpenbiomedvidDataset does not support data packing due to video handling. Setting data_packing to False.")
+    data_args.data_packing = False
     
   ds = ds_class(
       name=ds_name,
@@ -160,6 +169,69 @@ def rank0_make_data_module(*args, **kwargs):
   dist.barrier()
   return data_module or make_data_module(*args, **kwargs)
 
+def print_trainable_parameters_visual(model) -> None:
+  """
+  Prints the trainable status of all vision components including attention blocks and merger module.
+  Outputs the indices of trainable/non-trainable blocks and the merger module status.
+  """
+  trainable_blocks = []
+  non_trainable_blocks = []
+
+  # Check trainable status of vision attention blocks
+  for block_idx, block in enumerate(model.blocks):
+    is_trainable = all(param.requires_grad for param in block.parameters())
+    if is_trainable:
+      trainable_blocks.append(block_idx)
+    else:
+      non_trainable_blocks.append(block_idx)
+
+  # Check trainable status of merger module
+  is_merger_trainable = any(
+      param.requires_grad for param in model.merger.parameters())
+
+  # Print results
+  print("Vision Module - Attention Blocks:")
+  print(
+      f"Trainable Block Indices: {trainable_blocks if trainable_blocks else 'None'}"
+  )
+  print(
+      f"Non-Trainable Block Indices: {non_trainable_blocks if non_trainable_blocks else 'None'}"
+  )
+  print(f"Merger Module Trainable: {is_merger_trainable}")
+
+
+def print_trainable_parameters(model) -> None:
+  """
+  Prints the trainable status of all LLM components including embeddings, layers, and normalization.
+  Outputs the indices of trainable/non-trainable layers and other module statuses.
+  """
+  # Check embed_tokens
+  model = model.language_model
+  is_embed_trainable = any(
+      param.requires_grad for param in model.embed_tokens.parameters()
+  )
+  print(f"LLM Module - Embed Tokens Trainable: {is_embed_trainable}")
+
+  # Check each decoder layer
+  trainable_layers = []
+  non_trainable_layers = []
+
+  for layer_idx, layer in enumerate(model.layers):
+    is_trainable = any(param.requires_grad for param in layer.parameters())
+    if is_trainable:
+      trainable_layers.append(layer_idx)
+    else:
+      non_trainable_layers.append(layer_idx)
+
+  # Print layer status
+  print(
+      f"LLM Module - Trainable Layer Indices: {trainable_layers if trainable_layers else 'None'}"
+  )
+  print(
+      f"LLM Module - Non-Trainable Layer Indices: {non_trainable_layers if non_trainable_layers else 'None'}"
+  )
+
+
 
 def train(attn_implementation="flash_attention_2"):
   if dist.is_initialized():
@@ -200,16 +272,11 @@ def train(attn_implementation="flash_attention_2"):
   )
   model = set_model(model, model_args)
   if dist.get_rank() == 0:
-    model.visual.print_trainable_parameters()
-    model.model.print_trainable_parameters()
+    print_trainable_parameters_visual(model.visual)
+    print_trainable_parameters(model.model)
 
   if training_args.gradient_checkpointing:
-    if hasattr(model, "enable_input_require_grads"):
-      model.enable_input_require_grads()
-    else:
-      def make_inputs_require_grad(module, input, output):
-        output.requires_grad_(True)
-      model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
+    model.enable_input_require_grads()
 
   trainer = Trainer(
       model=model,

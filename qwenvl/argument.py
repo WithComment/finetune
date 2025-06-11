@@ -10,8 +10,8 @@ PATCH_SIZE = PATCH_WIDTH ** 2
 class ModelArguments:
   model_name_or_path: Optional[str] = field(
       default="Qwen/Qwen2.5-VL-3B-Instruct")
-  tune_mm_llm: bool = field(default=False)
-  tune_mm_mlp: bool = field(default=False)
+  tune_mm_llm: bool = field(default=True)
+  tune_mm_mlp: bool = field(default=True)
   tune_mm_vision: bool = field(default=False)
 
 
@@ -22,6 +22,7 @@ class DataArguments:
   split: str = field(default="train")
   use_cft: bool = field(default=False)
   model_max_length: int = field(default=3072)
+  num_proc: int = field(default=32)
 
 
 @dataclass

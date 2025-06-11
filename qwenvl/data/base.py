@@ -41,7 +41,7 @@ class BaseDataset(Dataset, ABC):
   processor: Qwen2_5_VLProcessor
   proc_args: ProcessingArguments
   for_training: bool
-  NUM_PROC: int = 1
+  num_proc: int = 32
 
   def __init__(
       self,
@@ -81,8 +81,8 @@ class BaseDataset(Dataset, ABC):
       logger.info(f"Loading dataset {self.ds_key} from {self.ds_dir}")
       self.ds = datasets.load_from_disk(str(self.ds_dir))[self.split]
       
+    # Default to no packing.
     self.bins = [[i] for i in range(len(self.ds))]
-
     
   @staticmethod
   def _get_ds_config(name: str) -> dict:
@@ -111,7 +111,7 @@ class BaseDataset(Dataset, ABC):
     return ds.map(
       _add_ids,
       with_indices=True,
-      num_proc=BaseDataset.NUM_PROC
+      num_proc=BaseDataset.num_proc
     )
     
   @staticmethod
@@ -129,7 +129,7 @@ class BaseDataset(Dataset, ABC):
     Preprocess all splits of the dataset.
     """
     logger.info(f"Preprocessing dataset {self.name}")
-    self.ds = self._preprocess(self.ds, self.media_dir, self.NUM_PROC)
+    self.ds = self._preprocess(self.ds, self.media_dir, self.num_proc)
     return self.ds
 
 
@@ -154,20 +154,22 @@ class BaseDataset(Dataset, ABC):
   @staticmethod
   @abstractmethod
   def _make_conversation(
-      items: list[dict],
+      row: dict,
       media_dir: Path | None,
       use_cft: bool
   ) -> list[dict]:
+    """Always operate on a single row, i.e., a dict.
+    """
     raise NotImplementedError()
   
 
   def make_conversation(
       self,
-      items: list[dict],
+      bin: list[dict],
   ) -> list[dict]:
     """
-    Create a conversation from rows of the dataset.
-    If items contain multiple rows, they will be merged into a single conversation.
+    Create a conversation from a bin.
+    If a bin contain multiple rows, they will be merged into a single conversation.
     The resulting conversation is self-contained, i.e., 
     all paths to media files are absolute paths.
     Example:
@@ -184,23 +186,26 @@ class BaseDataset(Dataset, ABC):
     ]
     """
     conversation = list()
-    for item in items:
-      conversation.extend(self._make_conversation(
-        item,
-        media_dir=self.media_dir,
-        use_cft=self.use_cft
-      ))
+    for item in bin:
+      conversation.extend(
+        self._make_conversation(
+          item,
+          media_dir=self.media_dir,
+          use_cft=self.use_cft
+        )
+      )
     return conversation
     
   
-  def make_model_input(self, batchconvo: list[dict]) -> dict:
+  def make_model_input(self, batch_convo: list[dict]) -> dict:
     return make_model_input(
-      conversations=batchconvo,
+      conversations=batch_convo,
       processor=self.processor,
       proc_args=self.proc_args,
       for_training=self.for_training
     )
-    
+
+
   def collate_fn(self, batch: list[dict] | list[list[dict]]) -> dict:
     """
     Transform a list of rows of the dataset into a dictionary suitable for model input.
@@ -222,24 +227,28 @@ class BaseDataset(Dataset, ABC):
   def n_samples(self) -> int:
     return len(self.ds)
   
+  @property
+  def packed(self) -> bool:
+    return isinstance(self.bins[0], list)
   
-  def __getitem__(self, idx: int | slice) -> list[dict]:
-    """
-    Returns a list of rows in the bin with index idx.
-    """
-    items = list()
-    bins = self.bins[idx]
-    if isinstance(idx, int):
-      bins = [bins]
-    for bin in bins:
-      bin_item = [self.ds[idx] for idx in bin]
-      items.append(bin_item)
+  def _get_bin(self, idx: int) -> list[dict]:
+    return [self.ds[i] for i in self.bins[idx]]
 
-    if isinstance(idx, int):
-      items = items[0]
-    
-    return items
   
+  def __getitem__(self, idx: int | slice) -> list[dict] | list[list[dict]]:
+    """
+    The item is always wrapped in a list to distinguish batch vs packing.
+    Return a list of dict if idx is an int.
+    Return a list of lists of dicts if idx is a slice.
+    """
+    if isinstance(idx, int):
+      return self._get_bin(idx)
+    
+    return [
+      self._get_bin(i) for i in self.bins[idx]
+    ]
+  
+
   @staticmethod
   def drop_non_json_fields(item: dict) -> dict:
     """

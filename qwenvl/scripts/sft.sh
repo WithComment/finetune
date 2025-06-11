@@ -6,6 +6,7 @@
 #SBATCH --mem=0
 #SBATCH --ntasks-per-node=1
 #SBATCH -c 32
+#SBATCH --qos=m2
 #SBATCH --gres=gpu:4
 #SBATCH --partition=a40
 #SBATCH --open-mode=append
@@ -16,6 +17,7 @@
 #SBATCH --signal=B:USR1@180
 
 source /fs01/projects/cft_vlm/.venv/bin/activate
+cd /fs01/projects/cft_vlm/finetune
 
 # Set distributed training environment variables
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
@@ -49,7 +51,7 @@ data_args="
     --data_packing True \
     --use_cft False \
     --split train \
-    --model_max_length 2048 \
+    --model_max_length 1800 \
     --num_proc 24"
 
 proc_args=""
@@ -66,7 +68,7 @@ train_args="
     --save_strategy steps \
     --save_steps 50 \
     --save_total_limit 2 \
-    --learning_rate 1e-7 \
+    --learning_rate 1e-6 \
     --weight_decay 0 \
     --warmup_ratio 0.03 \
     --max_grad_norm 1 \
@@ -85,5 +87,14 @@ args=" \
 
 python -m qwenvl.data.count_tokens ${model_args} ${data_args} ${proc_args}
 
-torchrun --nnodes=1 --nproc_per_node=4 \
-    -m qwenvl.train ${args} 
+if [ $? -ne 0 ]; then
+  echo "Token counting failed, exiting."
+  exit 1
+fi
+
+while true; do
+  if torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args}; then
+    break
+  fi
+  echo "Training failed, retrying..."
+done

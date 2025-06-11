@@ -30,6 +30,10 @@ def log_header(
 
 def load_pretrained_qwen(model_path, device):
   """Load the Qwen model and processor."""
+  checkpoint_dir = Path(os.environ.get('CHECKPOINT_DIR', ''))
+  if (checkpoint_dir / model_path).exists():
+    model_path = checkpoint_dir / model_path
+    
   logger.info(f"Loading {model_path} on device {device}")
   model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
       model_path,
@@ -64,8 +68,6 @@ def _infer(
   result = []
   for idx in tqdm(gpu_indices, disable=torch.distributed.get_rank() != 0):
     item = benchmark[idx]
-    print(item)
-    exit(0)
     with torch.no_grad():
       output_ids = model.generate(
           **collate_fn(item).to(model.device),

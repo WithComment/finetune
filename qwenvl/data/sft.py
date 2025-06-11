@@ -27,22 +27,22 @@ class SFTDataset(BaseDataset):
     if not data_args.data_packing:
       return
     
-    bin_pkl_path = self.ds_dir / 'bins.pkl'
-    logger.info(f"{bin_pkl_path.exists()=}, {self.need_num_content_tokens()=}")
-    if not bin_pkl_path.exists() or self.need_num_content_tokens():
+    self.bin_pkl_path = self.ds_dir / 'bins.pkl'
+    logger.info(f"{self.bin_pkl_path.exists()=}, {self.need_num_content_tokens()=}")
+    if not self.bin_pkl_path.exists() or self.need_num_content_tokens():
       logger.info("Need to count content tokens.")
       self.get_num_content_tokens()
       num_tokens = self.get_num_tokens()
       self.bins = fast_best_fit_decreasing(
         num_tokens, data_args.model_max_length
       )
-      with open(bin_pkl_path, 'wb') as f:
+      with open(self.bin_pkl_path, 'wb') as f:
         pickle.dump(self.bins, f)
     else:
-      logger.info(f"Loading bins from pickle file {bin_pkl_path}.")
-      with open(bin_pkl_path, 'rb') as f:
+      logger.info(f"Loading bins from pickle file {self.bin_pkl_path}.")
+      with open(self.bin_pkl_path, 'rb') as f:
         self.bins = pickle.load(f)
-      
+
   
   def need_num_content_tokens(self) -> bool:
     """

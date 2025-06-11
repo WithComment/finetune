@@ -14,6 +14,7 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+import tempfile
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.trainer_callback import TrainerCallback, TrainerState, TrainerControl
 from transformers import Trainer
@@ -166,8 +167,13 @@ def rank0_make_data_module(*args, **kwargs):
     return make_data_module(*args, **kwargs)
   if dist.get_rank() == 0:
     data_module = make_data_module(*args, **kwargs)
-  dist.barrier()
-  return data_module or make_data_module(*args, **kwargs)
+  dist.barrier(device_ids=[dist.get_rank()])
+  data_module = data_module or make_data_module(*args, **kwargs)
+  dist.barrier(device_ids=[dist.get_rank()])
+  ds = data_module['train_dataset'] or data_module['eval_dataset']
+  if hasattr(ds, 'bin_pkl_path') and dist.get_rank() == 0:
+    ds.bin_pkl_path.unlink(missing_ok=True)
+  return data_module
 
 def print_trainable_parameters_visual(model) -> None:
   """

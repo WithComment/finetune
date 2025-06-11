@@ -49,7 +49,7 @@ data_args="
     --data_packing True \
     --use_cft False \
     --split train \
-    --model_max_length 3072 \
+    --model_max_length 2048 \
     --num_proc 24"
 
 proc_args=""
@@ -64,9 +64,9 @@ train_args="
     --gradient_accumulation_steps 8 \
     --eval_strategy no \
     --save_strategy steps \
-    --save_steps 100 \
-    --save_total_limit 1 \
-    --learning_rate 2e-7 \
+    --save_steps 50 \
+    --save_total_limit 2 \
+    --learning_rate 1e-7 \
     --weight_decay 0 \
     --warmup_ratio 0.03 \
     --max_grad_norm 1 \
@@ -74,7 +74,6 @@ train_args="
     --logging_steps 1 \
     --gradient_checkpointing True \
     --dataloader_num_workers 8
-    --model_max_length 3072 \
     --run_name ${run_name} \
     --report_to wandb"
 

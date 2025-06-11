@@ -216,8 +216,6 @@ def train(attn_implementation="flash_attention_2"):
     rank0_print(
         f"Hello from Slurm! Rank {rank}/{world_size}")
 
-  signal.signal(signal.SIGUSR1, handle_preemption_signal)
-
   parser = transformers.HfArgumentParser((
       ModelArguments,
       DataArguments,

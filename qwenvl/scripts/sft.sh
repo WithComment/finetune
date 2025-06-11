@@ -93,4 +93,7 @@ if [ $? -ne 0 ]; then
     exit
 fi
 
-torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args}
+if ! (torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args}); then
+  echo "Training crashed, resubmitting job"
+  scontrol requeue $SLURM_JOB_ID
+fi

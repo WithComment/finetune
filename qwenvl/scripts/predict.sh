@@ -15,7 +15,9 @@
 #SBATCH --requeue
 #SBATCH --signal=B:USR1@180
 
+trap 'echo "[$(date)] Preemption signal received, exiting to trigger requeue"; exit 1' USR1 TERM
 source /fs01/projects/cft_vlm/.venv/bin/activate
+cd /fs01/projects/cft_vlm/finetune
 
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 export MASTER_PORT=29500

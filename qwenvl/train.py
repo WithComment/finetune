@@ -14,20 +14,15 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-import tempfile
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.trainer_callback import TrainerCallback, TrainerState, TrainerControl
 from transformers import Trainer
 import logging
 import signal
 import os
-import sys
-from pathlib import Path
 
 import transformers
 import torch
 import torch.distributed as dist
-import pathlib
 
 from qwenvl.data.base import BaseDataset
 from qwenvl.data.openbiomedvid import OpenbiomedvidDataset
@@ -134,31 +129,6 @@ def make_data_module(
       'eval_dataset': ds if not for_training else None,
       'data_collator': collate_fn,
   }
-
-
-SLURM_PREEMPTION_SIGNAL_RECEIVED = False
-
-def handle_preemption_signal(signum, frame):
-  """Signal handler that sets the global preemption flag."""
-  global SLURM_PREEMPTION_SIGNAL_RECEIVED
-  if not SLURM_PREEMPTION_SIGNAL_RECEIVED:
-    rank0_print(
-        f"Received signal {signum}. Triggering graceful shutdown and checkpointing...")
-    SLURM_PREEMPTION_SIGNAL_RECEIVED = True
-
-class SlurmPreemptionCallback(TrainerCallback):
-  def on_step_end(self, args: transformers.TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-    """Check for the preemption signal at the end of each step."""
-    if SLURM_PREEMPTION_SIGNAL_RECEIVED:
-      if state.is_world_process_zero:
-        rank0_print("Preemption signal detected. Saving model...")
-
-      kwargs['trainer'].save_model(args.output_dir)
-      kwargs['trainer'].save_state()
-
-      control.should_training_stop = True
-
-    dist.barrier()
 
 
 def rank0_make_data_module(*args, **kwargs):
@@ -288,7 +258,6 @@ def train(attn_implementation="flash_attention_2"):
       model=model,
       processing_class=processor,
       args=training_args,
-      callbacks=[SlurmPreemptionCallback],
       **data_module
   )
 

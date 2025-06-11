@@ -16,6 +16,7 @@
 #SBATCH --requeue
 #SBATCH --signal=B:USR1@180
 
+trap 'echo "[$(date)] Preemption signal received, exiting to trigger requeue"; exit 1' USR1 TERM
 source /fs01/projects/cft_vlm/.venv/bin/activate
 cd /fs01/projects/cft_vlm/finetune
 
@@ -88,13 +89,8 @@ args=" \
 python -m qwenvl.data.count_tokens ${model_args} ${data_args} ${proc_args}
 
 if [ $? -ne 0 ]; then
-  echo "Token counting failed, exiting."
-  exit 1
+    echo "Token counting failed. Exiting."
+    exit
 fi
 
-while true; do
-  if torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args}; then
-    break
-  fi
-  echo "Training failed, retrying..."
-done
+torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args}

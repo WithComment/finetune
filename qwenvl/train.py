@@ -54,13 +54,13 @@ def rank0_print(msg, lvl="INFO"):
 
 
 def set_model(model, model_args):
-  """!!!Do not change the order!!!"""
+  """Do not change the order"""
   if model_args.tune_mm_llm:
-    for n, p in model.model.named_parameters():
+    for n, p in model.language_model.named_parameters():
       p.requires_grad = True
     model.lm_head.requires_grad = True
   else:
-    for n, p in model.model.named_parameters():
+    for n, p in model.langauge_model.named_parameters():
       p.requires_grad = False
     model.lm_head.requires_grad = False
   if model_args.tune_mm_vision:

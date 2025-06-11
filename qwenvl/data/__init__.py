@@ -9,9 +9,16 @@ from .openpmc import OpenpmcDataset
 from .openpmc_tiny import OpenpmcTinyDataset
 
 from .benchmark import BenchmarkDataset
+from .fashion_mnist import FashionMnistDataset
 from .vqa import VQADataset
 
 avail_datasets = {
+  "fashion-mnist": {
+    "ds_dir": "/projects/cft_vlm/datasets/fashion_mnist/data/dataset",
+    "media_dir": None,
+    "ds_class": FashionMnistDataset,
+    "ds_key": "zalando-datasets/fashion_mnist"
+  },
   "path-vqa": {
     "ds_dir": "/projects/cft_vlm/datasets/path_vqa/data/dataset",
     "media_dir": None,

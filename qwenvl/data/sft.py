@@ -11,9 +11,9 @@ import pickle
 from . import logger
 
 class SFTDataset(BaseDataset):
-  
+
   for_training: bool = True
-  
+
   def __init__(
       self,
       name: str,
@@ -23,27 +23,44 @@ class SFTDataset(BaseDataset):
       force: bool = False
   ) -> None:
     super().__init__(name, processor, proc_args, data_args, force)
-    # Count content tokens if required.
-    if not data_args.data_packing:
-      return
-    
-    self.bin_pkl_path = self.ds_dir / 'bins.pkl'
-    logger.info(f"{self.bin_pkl_path.exists()=}, {self.need_num_content_tokens()=}")
-    if not self.bin_pkl_path.exists() or self.need_num_content_tokens():
+
+    logger.info(f"{self.need_num_content_tokens()=}")
+    if self.need_num_content_tokens():
       logger.info("Need to count content tokens.")
       self.get_num_content_tokens()
-      num_tokens = self.get_num_tokens()
-      self.bins = fast_best_fit_decreasing(
-        num_tokens, data_args.model_max_length
+
+    bin_capacity = data_args.model_max_length
+    ds_w_num_tokens = self.get_num_tokens()
+    too_long = ds_w_num_tokens.filter(
+      lambda x: x['num_tokens'] > bin_capacity,
+      num_proc=BaseDataset.num_proc,
+      desc="Filtering too long items"
+    )
+    logger.info(f"Found {len(too_long)} items with more than {bin_capacity} tokens.")
+    
+    if data_args.data_packing:
+      logger.info("Data packing is enabled.")
+      self.bin_pkl_path = self.ds_dir / 'bins.pkl'
+      self.load_bins(
+        ds_w_num_tokens['num_tokens'], self.bin_pkl_path, bin_capacity
       )
-      with open(self.bin_pkl_path, 'wb') as f:
+
+
+  def load_bins(self, num_tokens, path, bin_capacity):
+    if not path.exists():
+      logger.info(f"Creating bins to {path}.")
+      self.bins = fast_best_fit_decreasing(
+        num_tokens, bin_capacity
+      )
+      with open(path, 'wb') as f:
         pickle.dump(self.bins, f)
+      logger.info(f"Bins saved to {path}.")
     else:
-      logger.info(f"Loading bins from pickle file {self.bin_pkl_path}.")
-      with open(self.bin_pkl_path, 'rb') as f:
+      logger.info(f"Loading bins from pickle file {path}.")
+      with open(path, 'rb') as f:
         self.bins = pickle.load(f)
 
-  
+
   def need_num_content_tokens(self) -> bool:
     """
     Returns `True` if
@@ -59,16 +76,16 @@ class SFTDataset(BaseDataset):
     proc_args_path = self.ds_dir / 'proc_args.json'
     if not proc_args_path.exists():
       return True
-    
+
     with open(proc_args_path, 'r') as f:
       og_proc_args = ProcessingArguments(**json.load(f))
-      
+
     if og_proc_args != self.proc_args:
       return True
-    
+
     return False
-    
-  
+
+
   @staticmethod
   def _get_num_content_tokens(
       ds: datasets.Dataset,
@@ -86,18 +103,18 @@ class SFTDataset(BaseDataset):
       num_tokens = 0
       for text in texts:
         num_tokens += len(processor.tokenizer.encode(text))
-    
+
       for img in images:
         img = get_image(img)
         result = processor.image_processor(img)
         num_tokens += result['image_grid_thw'].prod() // 4
-      
+
       for vid in videos:
         vid, fps = get_video_frames(vid, proc_args)
         result = processor.video_processor(vid, fps=fps)
         num_tokens += result['video_grid_thw'].prod() // 4
-      
-      item['media_count'] = len(images) + len(videos)      
+
+      item['media_count'] = len(images) + len(videos)
       item['num_content_tokens'] = num_tokens
       return item
 
@@ -106,12 +123,12 @@ class SFTDataset(BaseDataset):
       num_proc=BaseDataset.num_proc,
       desc="Counting content tokens",
     )
-    
+
   def get_num_content_tokens(self):
     """
     Operate on all splits.
     Get the number of content tokens for each item in the dataset.
-    The dataset source will always be HF_HOME. 
+    The dataset source will always be HF_HOME.
     Save the field num_content_tokens to the dataset,
     along with the processing arguments that affect the content token count.
     """
@@ -129,12 +146,13 @@ class SFTDataset(BaseDataset):
     self.ds.save_to_disk(self.ds_dir)
     self.ds = self.ds[self.split]
     return self.ds
-  
+
   def get_num_tokens(self):
-    
+
     tokenizer = self.processor.tokenizer
     def _get_num_tokens(item):
-      tokens = tokenizer.apply_chat_template(self.make_conversation(item))
+      tokens = tokenizer.apply_chat_template(
+        self._make_conversation(item, self.media_dir, self.use_cft))
       media_count = item['media_count']
       item['num_tokens'] = len(tokens) - media_count + item['num_content_tokens']
       return item
@@ -143,4 +161,4 @@ class SFTDataset(BaseDataset):
         _get_num_tokens,
         num_proc=BaseDataset.num_proc,
         desc="Counting total tokens",
-    )['num_tokens']
+    )

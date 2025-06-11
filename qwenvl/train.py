@@ -300,7 +300,7 @@ def train(attn_implementation="flash_attention_2"):
     rank0_print(
         f"Checkpoint detected. Resuming training from {last_checkpoint}")
   else:
-    rank0_print("No checkpoint found. Starting training from scratch.")
+    rank0_print(f"No checkpoint found at {training_args.output_dir}. Starting training from scratch.")
   
   trainer.train(resume_from_checkpoint=last_checkpoint)
 

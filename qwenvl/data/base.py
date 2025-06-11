@@ -18,6 +18,7 @@
 import json
 from pathlib import Path
 import datasets
+import torch
 from torch.utils.data import Dataset
 from transformers import Qwen2_5_VLProcessor
 from abc import ABC, abstractmethod
@@ -26,6 +27,7 @@ from ..argument import DataArguments, ProcessingArguments
 from .utils import make_model_input
 from . import logger
 
+torch.set_num_threads(1)  # Ensure single-threaded processing for datasets
 
 class BaseDataset(Dataset, ABC):
   """
@@ -41,7 +43,7 @@ class BaseDataset(Dataset, ABC):
   processor: Qwen2_5_VLProcessor
   proc_args: ProcessingArguments
   for_training: bool
-  num_proc: int = 32
+  num_proc: int = 24
 
   def __init__(
       self,

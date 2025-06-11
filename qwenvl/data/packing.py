@@ -19,7 +19,9 @@ import tqdm
 import math
 from numba import njit
 
-DEBUG = os.environ.get('DEBUG', '0') == '1'
+from ..utils import get_logger
+
+logger = get_logger(__name__)
 
 @njit(cache=True)
 def get_height(num_bins: int) -> int:
@@ -126,9 +128,8 @@ def insert(num_items: int, num_bins: int, bins_remaining_capacity: np.ndarray, s
 
 
 def fast_best_fit_decreasing(items, bin_capacity, batch_size=50000, progress_bar=True):
-  bin_capacity = bin_capacity
   
-  def _fast_best_fit_decreasing(items, bin_capacity):
+  def _fast_best_fit_decreasing(items):
     num_items = 0
     num_bins = 0
     bin_indices = []
@@ -154,7 +155,7 @@ def fast_best_fit_decreasing(items, bin_capacity, batch_size=50000, progress_bar
   for slice_start in range(0, len(items), batch_size):
     slice_end = min(slice_start + batch_size, len(items))
     slice_items = items[slice_start:slice_end]
-    slice_bins = _fast_best_fit_decreasing(slice_items, bin_capacity)
+    slice_bins = _fast_best_fit_decreasing(slice_items)
     slice_bins = [[slice_start + i for i in slice_bin] for slice_bin in slice_bins]
     bins.extend(slice_bins)
   return bins

@@ -8,7 +8,8 @@ from .utils import get_image, get_video_frames
 from .base import BaseDataset
 import pickle
 
-from . import logger
+from ..utils import get_logger
+logger = get_logger = get_logger(__name__)
 
 class SFTDataset(BaseDataset):
 
@@ -36,7 +37,7 @@ class SFTDataset(BaseDataset):
       num_proc=BaseDataset.num_proc,
       desc="Filtering too long items"
     )
-    logger.info(f"Found {len(too_long)} items with more than {bin_capacity} tokens.")
+    logger.info(f"Found {len(too_long)} / {len(self.ds)} ({len(too_long) / len(self.ds):.4f}) items with more than {bin_capacity} tokens.")
     
     if data_args.data_packing:
       logger.info("Data packing is enabled.")

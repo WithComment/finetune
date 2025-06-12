@@ -24,7 +24,6 @@ def evaluate(output_file: Path, comp_answer: Callable, filter: Callable = None) 
     total += 1
     try:
       model_answer = item.get('model_answer') or item.get('model_output', '')
-      print(model_answer)
       if comp_answer(item['answer'], model_answer):
         correct += 1
       else:
@@ -67,12 +66,15 @@ if __name__ == "__main__":
   
   parser = argparse.ArgumentParser(description="Evaluate model output.")
   parser.add_argument('output_file', type=Path, help="Path to the output file.")
-  parser.add_argument('comp_answer', type=str, help="Comparison function name.")
-  
+  parser.add_argument('--comp_answer', type=str, default="comp_answer_basic", help="Comparison function name.")
+  parser.add_argument('--filter', type=str, default="yes_no_filter", help="Filter function name (optional).")
   args = parser.parse_args()
   
   comp_answer = globals().get(args.comp_answer)
+  filter_func = globals().get(args.filter, None)
   if comp_answer is None:
     raise ValueError(f"Comparison function '{args.comp_answer}' not found.")
+  if filter_func is None:
+    logger.warning(f"Filter function '{args.filter}' not found, using no filter.")
   
   evaluate(args.output_file, comp_answer)

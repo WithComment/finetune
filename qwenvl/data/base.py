@@ -25,7 +25,8 @@ from abc import ABC, abstractmethod
 
 from ..argument import DataArguments, ProcessingArguments
 from .utils import make_model_input
-from . import logger
+from ..utils import get_logger
+logger = get_logger(__name__)
 
 torch.set_num_threads(1)  # Ensure single-threaded processing for datasets
 

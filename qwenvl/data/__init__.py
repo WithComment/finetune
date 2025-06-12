@@ -7,6 +7,7 @@ from .sft import SFTDataset
 from .openbiomedvid import OpenbiomedvidDataset
 from .openpmc import OpenpmcDataset
 from .openpmc_tiny import OpenpmcTinyDataset
+from .openpmc_small import OpenpmcSmallDataset
 
 from .benchmark import BenchmarkDataset
 from .fashion_mnist import FashionMnistDataset
@@ -37,6 +38,12 @@ avail_datasets = {
     "ds_class": OpenpmcDataset,
     "ds_key": "vector-institute/open-pmc"
   },
+  "open-pmc-small": {
+    "ds_dir": "/projects/cft_vlm/datasets/open_pmc_small/data/dataset",
+    "media_dir": None,
+    "ds_class": OpenpmcSmallDataset,
+    "ds_key": "vector-institute/open-pmc"
+  },
   "open-pmc-tiny": {
     "ds_dir": "/projects/cft_vlm/datasets/open_pmc_tiny/data/dataset",
     "media_dir": None,
@@ -45,7 +52,7 @@ avail_datasets = {
   },
   "openbiomedvid": {
     "ds_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/dataset",
-    "media_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/vid_reencoded",
+    "media_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/vid_segments",
     "ds_class": OpenbiomedvidDataset,
     "ds_key": "connectthapa84/OpenBiomedVid"
   }

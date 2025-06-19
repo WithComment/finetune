@@ -32,18 +32,22 @@ class SFTDataset(BaseDataset):
 
     bin_capacity = data_args.model_max_length
     ds_w_num_tokens = self.get_num_tokens()
-    too_long = ds_w_num_tokens.filter(
-      lambda x: x['num_tokens'] > bin_capacity,
+    short = ds_w_num_tokens.filter(
+      lambda x: x['num_tokens'] <= bin_capacity,
       num_proc=BaseDataset.num_proc,
       desc="Filtering too long items"
     )
-    logger.info(f"Found {len(too_long)} / {len(self.ds)} ({len(too_long) / len(self.ds):.4f}) items with more than {bin_capacity} tokens.")
+    total = len(self.ds)
+    logger.info(f"Found {total - len(short)} / {total} ({total - len(short) / total:.4f}) items with more than {bin_capacity} tokens.")
+    
+    self.ds = short
+    self.bins = [[i] for i in range(len(self.ds))]
     
     if data_args.data_packing:
       logger.info("Data packing is enabled.")
       self.bin_pkl_path = self.ds_dir / 'bins.pkl'
       self.load_bins(
-        ds_w_num_tokens['num_tokens'], self.bin_pkl_path, bin_capacity
+        self.ds['num_tokens'], self.bin_pkl_path, bin_capacity
       )
 
 
@@ -85,7 +89,7 @@ class SFTDataset(BaseDataset):
       return True
 
     return False
-
+  
 
   @staticmethod
   def _get_num_content_tokens(
@@ -153,7 +157,7 @@ class SFTDataset(BaseDataset):
     tokenizer = self.processor.tokenizer
     def _get_num_tokens(item):
       tokens = tokenizer.apply_chat_template(
-        self._make_conversation(item, self.media_dir, self.use_cft))
+        self.make_conversation([item]))
       media_count = item['media_count']
       item['num_tokens'] = len(tokens) - media_count + item['num_content_tokens']
       return item

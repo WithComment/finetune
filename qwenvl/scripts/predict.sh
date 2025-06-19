@@ -1,11 +1,12 @@
 #!/bin/bash
 # filepath: /projects/cft_vlm/Qwen2.5-VL/qwen-vl-finetune/scripts/sft_slurm.sh
 
-#SBATCH --job-name=qwen2_5vl_infer
+#SBATCH --job-name=infer-qwen2_5vl
 #SBATCH --nodes=1
 #SBATCH --mem=0
 #SBATCH --ntasks-per-node=1
 #SBATCH -c 32
+#SBATCH --qos=m2
 #SBATCH --gres=gpu:4
 #SBATCH --partition=a40
 #SBATCH --open-mode=append
@@ -13,9 +14,14 @@
 #SBATCH --output=logs/infer/%j.out
 #SBATCH --error=logs/infer/%j.err
 #SBATCH --requeue
-#SBATCH --signal=B:USR1@180
+#SBATCH --time=4:00:00
+#SBATCH --signal=B:USR1@60
+#SBATCH --signal=B:TERM@60
 
-trap 'echo "[$(date)] Preemption signal received, exiting to trigger requeue"; exit 1' USR1 TERM
+trap 'echo "[$(date)] SIGNAL $? received, requeueing"; \
+     scontrol requeue $SLURM_JOB_ID; \
+     exit 1' USR1 TERM
+
 source /fs01/projects/cft_vlm/.venv/bin/activate
 cd /fs01/projects/cft_vlm/finetune
 
@@ -30,7 +36,8 @@ export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 
 dataset_use=$1
-model_use=$2
+split=$2
+model_use=$3
 if [ -z "$model_use" ]; then
   echo "No model specified, using default: 'Qwen/Qwen2.5-VL-3B-Instruct'"
   model_use="Qwen/Qwen2.5-VL-3B-Instruct"
@@ -41,7 +48,8 @@ eval_args="
 
 data_args="
     --dataset_use ${dataset_use} \
-    --split test"
+    --split ${split} \
+    --use_cot True"
 
 proc_args=""
 
@@ -50,6 +58,29 @@ args="
     ${data_args} \
     ${proc_args}"
 
-torchrun --nproc_per_node=$NPROC_PER_NODE \
-              --nnodes=1 \
-              -m qwenvl.predict ${args}
+              
+requeue=${4:-true}
+
+echo "Starting training process in the background..."
+# Run torchrun in the background and save its PID
+torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.predict ${args} &
+PROC_ID=$!
+
+# The shell is now free and can process signals.
+# The 'wait' command pauses the script while allowing traps to fire.
+echo "Waiting for process $PROC_ID. The script can now receive signals."
+wait $PROC_ID
+EXIT_CODE=$?
+
+# This part of the script will only be reached if the wait command
+# is NOT interrupted by a signal that causes the script to exit.
+if [ $EXIT_CODE -ne 0 ]; then
+    if [ "$requeue" = false ]; then
+        echo "Prediction failed with exit code $EXIT_CODE, not requeuing job."
+        exit 1
+    fi
+    echo "Prediction crashed with exit code $EXIT_CODE, resubmitting job."
+    scontrol requeue $SLURM_JOB_ID
+else
+    echo "Prediction completed successfully."
+fi

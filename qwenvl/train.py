@@ -39,9 +39,7 @@ from transformers.utils import logging as hf_logging
 hf_logging.set_verbosity_error()
 torch.set_num_threads(1)
 
-
 logger = get_logger(__name__)
-
 
 def rank0_print(msg, lvl="INFO"):
   lvl = getattr(logging, lvl.upper(), logging.INFO)

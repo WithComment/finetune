@@ -12,6 +12,7 @@ from .openpmc_small import OpenpmcSmallDataset
 from .benchmark import BenchmarkDataset
 from .fashion_mnist import FashionMnistDataset
 from .vqa import VQADataset
+from .surgeryvid import SurgeryVidDataset
 
 avail_datasets = {
   "fashion-mnist": {
@@ -31,6 +32,12 @@ avail_datasets = {
     "media_dir": None,
     "ds_class": VQADataset,
     "ds_key": "flaviagiammarino/vqa-rad"
+  },
+  "surgery-vid": {
+    "ds_dir": "/projects/cft_vlm/datasets/surgeryvid/data/dataset",
+    "media_dir": "/projects/cft_vlm/datasets/surgeryvid/data/vid_processed",
+    "ds_class": SurgeryVidDataset,
+    "ds_key": "connectthapa84/SurgeryVideoQA"
   },
   "open-pmc": {
     "ds_dir": "/projects/cft_vlm/datasets/open_pmc/data/dataset",

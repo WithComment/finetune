@@ -2,6 +2,8 @@ import logging
 import random
 import subprocess
 
+from qwenvl.data.utils import make_cot, verify_video
+
 
 from .sft import SFTDataset
 
@@ -42,12 +44,31 @@ class OpenbiomedvidDataset(SFTDataset):
     videos = [media_dir / item['video']]
 
     return texts, images, videos
+  
+  def make_conversation(self, bin):
+    conversation = list()
+    for item in bin:
+      conversation.extend(
+        self._make_conversation(
+          item,
+          subtitle_dir=self.media_dir.with_name('sub_segments'),
+          media_dir=self.media_dir,
+          use_cot=self.use_cot
+        )
+      )
+    return conversation
 
   @staticmethod
-  def _make_conversation(item, media_dir, use_cft):
+  def _make_conversation(item, subtitle_dir, media_dir, use_cot):
     conversation = list()
-    if use_cft:
-      raise NotImplementedError()
+    cot = None
+    if use_cot:
+      cot = subtitle_dir / item['video'].replace('.mp4', '.en.vtt')
+      if not cot.exists():
+        logger.warning(f"Subtitle file {cot} does not exist, skipping COT.")
+        cot = None
+      else:
+        cot = make_cot(cot)
 
     conversation.append({
         'role': 'user',
@@ -65,6 +86,10 @@ class OpenbiomedvidDataset(SFTDataset):
     conversation.append({
         'role': 'assistant',
         'content': [
+            {
+                'type': 'text',
+                'text': cot
+            },
             {
                 'type': 'text',
                 'text': item['caption']
@@ -86,46 +111,6 @@ class OpenbiomedvidDataset(SFTDataset):
     return ds
 
 
-def verify_video(item, media_dir):
-  video_path = media_dir / item['video']
-  return video_path.exists()
-
-
 logger = logging.getLogger(__name__)
 
 
-def reencode(item, media_dir):
-  output_path = media_dir.parent / 'vid_reencoded' / item['video']
-  video_path = media_dir / item['video']
-  if not video_path.exists():
-    item['status'] = 'DNE'
-    return item
-
-  cmd = [
-      "ffmpeg",
-      "-y",
-      "-i", str(video_path),
-      "-c:v", "libx264",
-      "-preset", "veryfast",
-      "-crf", "23",
-      "-c:a", "copy",
-      str(output_path)
-  ]
-  try:
-    result = subprocess.run(cmd, stderr=subprocess.PIPE,
-                            stdout=subprocess.PIPE, text=True)
-    if result.returncode == 0:
-      logger.info(f"✅ Successfully re-encoded: {video_path}")
-    else:
-      logger.warning(f"❌ Failed to re-encode: {video_path}")
-      logger.debug(result.stderr)
-      item['status'] = 'Corrupted'
-      return item
-
-  except Exception as e:
-    logger.error(f"🚨 Error processing {video_path}: {e}")
-    item['status'] = 'PyERROR'
-    return item
-
-  item['status'] = 'OK'
-  return item

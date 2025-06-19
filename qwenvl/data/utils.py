@@ -1,11 +1,13 @@
 import json
 from pathlib import Path
+import subprocess
 from typing import Callable
 import cv2
 import datasets
 from decord import VideoReader
 import numpy as np
 from PIL import Image
+import webvtt
 
 import torch
 
@@ -18,6 +20,20 @@ from ..argument import ProcessingArguments
 
 PLACEHOLDER_IDS = {151654, 151655, 151656}
 torch.set_num_threads(1)
+
+IM_START = "<|im_start|>"
+IM_END = "<|im_end|>"
+
+def make_cot(subtitle_file: Path):
+  if not subtitle_file.exists():
+    return ''
+  cot = "### Thinking frame by frame:\n\n"
+  sub = webvtt.read(subtitle_file)
+  for caption in sub:
+    cot += f"<timestamp>: {caption.start} --> {caption.end}\n"
+    cot += f"<content>: {caption.text}\n\n"
+  cot += "### End thinking"
+  return cot
 
 
 def _process_video_with_decord(
@@ -230,6 +246,9 @@ def make_model_input(
   """
   Conversation is a list of dictionaries which contains multiple messages.
   """
+  if isinstance(conversations[0], dict):
+    # Make it a batch.
+    conversations = [conversations]
     
   image_inputs, video_inputs, fpss = get_batch_images_and_videos(
     conversations, proc_args)
@@ -269,7 +288,7 @@ def filter_image(item, image_key='image', id_key=None):
 
 def processed_the_same(
     saved_path: Path,
-    proc_args: ProcessingArguments,
+    processor: Qwen2_5_VLProcessor,
     check_model_length: bool = False
 ) -> bool:
   """
@@ -301,86 +320,47 @@ def processed_the_same(
   return True
 
 
-def get_media(
-    item,
-    keys
-) -> list[str]:
-  media_names = list()
-  for key in keys:
-    names = item.get(key, list())
-    if not isinstance(names, list):
-      names = [names]
-    media_names.extend(names)
-  return media_names
+def verify_video(item, media_dir):
+  video_path = media_dir / item['video']
+  return video_path.exists()
 
 
-def get_num_content_tokens(
-    dataset: datasets.Dataset,
-    media_dir: Path,
-    processor: AutoProcessor,
-    proc_args: ProcessingArguments,
-    get_content_fn: Callable,
-    num_proc: int = 2,
-) -> datasets.Dataset:
-  def _get_num_content_tokens(item: dict) -> dict:
-    texts, images, videos = get_content_fn(item)
-
-    num_tokens = 0
-    for text in texts:
-      num_tokens += len(processor.tokenizer.encode(text))
-  
-    for img in images:
-      img = get_image(img, media_dir)
-      result = processor.image_processor(img)
-      num_tokens += result['image_grid_thw'].prod() // 4
-    
-    for vid in videos:
-      vid, fps = get_video_frames(vid, proc_args, media_dir)
-      result = processor.video_processor(vid, fps=fps)
-      num_tokens += result['video_grid_thw'].prod() // 4
-    
-    item['num_content_tokens'] = num_tokens
+def reencode(item, media_dir, logger):
+  output_path = media_dir.parent / 'vid_processed' / item['video']
+  video_path = media_dir / item['video']
+  if output_path.exists():
+    item['status'] = 'Already Processed'
+    logger.info(f"✅ Already processed: {video_path}")
+    return item
+  if not video_path.exists():
+    item['status'] = 'DNE'
     return item
 
-  mapped = dataset.map(
-    _get_num_content_tokens,
-    num_proc=num_proc,
-    desc="content tokens",
-  )
-  return mapped
+  cmd = [
+      "ffmpeg",
+      "-y",
+      "-i", str(video_path),
+      "-c:v", "libx264",
+      "-preset", "veryfast",
+      "-crf", "23",
+      "-c:a", "copy",
+      str(output_path)
+  ]
+  try:
+    result = subprocess.run(cmd, stderr=subprocess.PIPE,
+                            stdout=subprocess.PIPE, text=True)
+    if result.returncode == 0:
+      logger.info(f"✅ Successfully re-encoded: {video_path}")
+    else:
+      logger.warning(f"❌ Failed to re-encode: {video_path}")
+      logger.debug(result.stderr)
+      item['status'] = 'Corrupted'
+      return item
 
-def save_w_proc_args(
-    dataset: datasets.Dataset,
-    dataset_dir: Path,
-    proc_args: ProcessingArguments,
-) -> None:
-  dataset.save_to_disk(dataset_dir)
-  with open((dataset_dir) / 'proc_args.json', 'w') as f:
-    json.dump(proc_args.__dict__, f, indent=2)
-
-
-def get_num_tokens(
-  ds: datasets.Dataset,
-  make_conversation_fn,
-  tokenizer,
-  num_proc=32
-):
-  if 'num_tokens' in ds.features:
-    return ds['num_tokens']
-
-  def _get_num_tokens(item):
-    tokens = tokenizer.apply_chat_template(
-      make_conversation_fn(item))
-    placeholder_count = 0
-    for id in tokens:
-      if id in PLACEHOLDER_IDS:
-        placeholder_count += 1
-
-    item['num_tokens'] = len(tokens) - placeholder_count + item['num_content_tokens']
+  except Exception as e:
+    logger.error(f"🚨 Error processing {video_path}: {e}")
+    item['status'] = 'PyERROR'
     return item
 
-  return ds.map(
-      _get_num_tokens,
-      num_proc=num_proc,
-      desc="total tokens",
-  )['num_tokens']
+  item['status'] = 'OK'
+  return item

@@ -40,7 +40,7 @@ class BaseDataset(Dataset, ABC):
   ds_dir: Path
   media_dir: Path | None
   ds_key: str
-  use_cft: bool
+  use_cot: bool
   processor: Qwen2_5_VLProcessor
   proc_args: ProcessingArguments
   for_training: bool
@@ -63,7 +63,7 @@ class BaseDataset(Dataset, ABC):
     self.processor = processor
     self.proc_args = proc_args
     self.data_args = data_args
-    self.use_cft = data_args.use_cft
+    self.use_cot = data_args.use_cot
     self.split = data_args.split
     
     self.ds_config = self._get_ds_config(name)
@@ -194,7 +194,7 @@ class BaseDataset(Dataset, ABC):
         self._make_conversation(
           item,
           media_dir=self.media_dir,
-          use_cft=self.use_cft
+          use_cft=self.use_cot
         )
       )
     return conversation

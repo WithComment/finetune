@@ -14,10 +14,7 @@ class VQADataset(BenchmarkDataset):
   @staticmethod
   def _make_conversation(item, media_dir, use_cft):
     conversation = list()
-    if use_cft:
-      raise NotImplementedError("CFT is not implemented for VQADataset")
-    
-    restriction_prompt = "Answer straightforwardly and concisely."
+    restriction_prompt = "Answer straightforwardly and concisely: "
     conversation.append({
       'role': 'user',
       'content': [

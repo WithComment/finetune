@@ -20,7 +20,7 @@ class DataArguments:
   dataset_use: str = field(default="")
   data_packing: bool = field(default=True)
   split: str = field(default="train")
-  use_cft: bool = field(default=False)
+  use_cot: bool = field(default=False)
   model_max_length: int = field(default=3072)
   num_proc: int = field(default=32)
 

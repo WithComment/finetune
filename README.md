@@ -7,11 +7,11 @@
 ## Inference
 Use the following command to perform inference
 ```sh
-bash qwenvl/scripts/predict.sh <dataset_name> <optional: model_checkpoint>
+bash qwenvl/scripts/predict.sh <dataset_name> <split> <optional: model_checkpoint>
 ```
 For example
 ```sh
-bash qwenvl/scripts/predict.sh vqa-rad
+bash qwenvl/scripts/predict.sh vqa-rad test Qwen/Qwen2.5-VL-3B-Instruct-openbiomedvid
 ```
-which will use the `vqa-rad` dataset from huggingface and the original `Qwen2.5-VL-3B-Instruct` model.
-The path to the generated output will be shown at the end of the log.
+which will use the `vqa-rad` dataset from huggingface and the checkpoint trained on OpenBiomedVideo dataset.
+The output is located at `/projects/cft_vlm/datasets/<dataset_name>/results/<split>/<model_name_final_component>/results.jsonl`.

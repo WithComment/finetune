@@ -1,7 +1,7 @@
 #!/bin/bash
 # filepath: /projects/cft_vlm/Qwen2.5-VL/qwen-vl-finetune/scripts/sft_slurm.sh
 
-#SBATCH --job-name=qwen2_5vl-sft
+#SBATCH --job-name=sft_qwen2.5-vl
 #SBATCH --nodes=1
 #SBATCH --mem=0
 #SBATCH --ntasks-per-node=1
@@ -14,9 +14,13 @@
 #SBATCH --output=logs/sft/%j.out
 #SBATCH --error=logs/sft/%j.err
 #SBATCH --requeue
-#SBATCH --signal=B:USR1@180
+#SBATCH --signal=B:USR1@60
+#SBATCH --signal=B:TERM@60
 
-trap 'echo "[$(date)] Preemption signal received, exiting to trigger requeue"; exit 1' USR1 TERM
+trap 'echo "[$(date)] SIGNAL $? received, requeueing"; \
+     scontrol requeue $SLURM_JOB_ID; \
+     exit 1' USR1 TERM
+
 source /fs01/projects/cft_vlm/.venv/bin/activate
 cd /fs01/projects/cft_vlm/finetune
 
@@ -50,10 +54,10 @@ model_args="
 data_args="
     --dataset_use ${dataset_use} \
     --data_packing True \
-    --use_cft False \
+    --use_cot True \
     --split train \
-    --model_max_length 1800 \
-    --num_proc 24"
+    --model_max_length 1600 \
+    --num_proc 32"
 
 proc_args=""
 
@@ -68,10 +72,10 @@ train_args="
     --eval_strategy no \
     --save_strategy steps \
     --save_steps 50 \
-    --save_total_limit 2 \
-    --learning_rate 1e-6 \
-    --weight_decay 0 \
-    --warmup_ratio 0.03 \
+    --save_total_limit 1 \
+    --learning_rate 1e-5 \
+    --weight_decay 0.01 \
+    --warmup_ratio 0.01 \
     --max_grad_norm 1 \
     --lr_scheduler_type cosine \
     --logging_steps 1 \
@@ -93,7 +97,28 @@ if [ $? -ne 0 ]; then
     exit
 fi
 
-if ! (torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args}); then
-  echo "Training crashed, resubmitting job"
-  scontrol requeue $SLURM_JOB_ID
+requeue=${2:-true}
+
+echo "Starting training process in the background..."
+# Run torchrun in the background and save its PID
+torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args} &
+PROC_ID=$!
+
+# The shell is now free and can process signals.
+# The 'wait' command pauses the script while allowing traps to fire.
+echo "Waiting for process $PROC_ID. The script can now receive signals."
+wait $PROC_ID
+EXIT_CODE=$?
+
+# This part of the script will only be reached if the wait command
+# is NOT interrupted by a signal that causes the script to exit.
+if [ $EXIT_CODE -ne 0 ]; then
+    if [ "$requeue" = false ]; then
+        echo "Training failed with exit code $EXIT_CODE, not requeuing job."
+        exit 1
+    fi
+    echo "Training crashed with exit code $EXIT_CODE, resubmitting job."
+    scontrol requeue $SLURM_JOB_ID
+else
+    echo "Training completed successfully."
 fi

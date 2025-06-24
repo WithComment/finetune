@@ -23,6 +23,7 @@ class DataArguments:
   use_cot: bool = field(default=False)
   model_max_length: int = field(default=3072)
   num_proc: int = field(default=32)
+  portion: float = field(default=1.0)
 
 
 @dataclass
@@ -46,9 +47,9 @@ class ProcessingArguments:
   video_min_pixels: int = field(default=PATCH_SIZE * 8 * 8)
   video_max_pixels: int = field(default=PATCH_SIZE * 8 * 24)
   video_default_to_square: bool = field(default=False)
-  video_max_frames: int = field(default=8)
+  video_max_frames: int = field(default=30)
   video_min_frames: int = field(default=4)
-  base_interval: int = field(default=2)
+  base_interval: int = field(default=1)
 
 
 @dataclass

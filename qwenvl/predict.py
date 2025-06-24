@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import json
+import time
 from typing import Callable
 from tqdm import tqdm
 from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
@@ -70,10 +71,12 @@ def load_pretrained_qwen(model_path, device):
 def get_gpu_indices(
     benchmark: BenchmarkDataset,
     world_size: int,
-    local_rank: int
+    local_rank: int,
+    portion: float,
 ) -> range:
   """Split the benchmark across multiple GPUs."""
-  items_per_gpu = len(benchmark) // world_size
+  total = int(len(benchmark) * portion)
+  items_per_gpu = total // world_size
   start_idx = local_rank * items_per_gpu
   end_idx = start_idx + items_per_gpu
   return range(start_idx, end_idx)
@@ -90,7 +93,7 @@ def _infer(
   result = []
   for idx in tqdm(gpu_indices, disable=torch.distributed.get_rank() != 0):
     item = benchmark[idx]
-    with torch.no_grad():
+    with torch.inference_mode():
       output_ids = model.generate(
           **collate_fn(item).to(model.device),
           **gen_config
@@ -150,13 +153,14 @@ def generate_output(
     benchmark: BenchmarkDataset,
     collate_fn: Callable,
     gen_config: dict,
+    portion: float,
 ) -> None:
   output_dir.mkdir(parents=True, exist_ok=True)
 
   gpu_result = _infer(
       model,
       benchmark,
-      gpu_indices=get_gpu_indices(benchmark, world_size, local_rank),
+      gpu_indices=get_gpu_indices(benchmark, world_size, local_rank, portion),
       collate_fn=collate_fn,
       gen_config=gen_config,
       processor=benchmark.processor,
@@ -182,6 +186,9 @@ def predict(
   device = f"cuda:{local_rank}"
 
   model, processor, _ = load_pretrained_qwen(model_path, device)
+  if model_path.endswith('-cot'):
+    data_args.use_cot = True
+    logger.info("Using COT for inference.")
   processor = set_processor(processor, proc_args, data_args)
   data_module = rank0_make_data_module(
       processor=processor,
@@ -196,8 +203,6 @@ def predict(
   collate_fn = data_module['data_collator']
 
   output_dir = eval_dataset.ds_dir.parent.parent / 'results' / data_args.split / Path(model_path).name
-  if data_args.use_cot:
-    output_dir = output_dir / 'cot'
   generate_output(
       model,
       world_size=world_size,
@@ -206,9 +211,14 @@ def predict(
       benchmark=eval_dataset,
       collate_fn=collate_fn,
       gen_config={
-          'max_new_tokens': 32,
+          'max_new_tokens': 64,
           'do_sample': False,
-      }
+          "eos_token_id": [
+            151645,
+            151643
+          ],
+      },
+      portion=data_args.portion,
   )
   return output_dir
 

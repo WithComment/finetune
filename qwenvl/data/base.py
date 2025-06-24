@@ -159,7 +159,7 @@ class BaseDataset(Dataset, ABC):
   def _make_conversation(
       row: dict,
       media_dir: Path | None,
-      use_cft: bool
+      use_cot: bool
   ) -> list[dict]:
     """Always operate on a single row, i.e., a dict.
     """
@@ -194,7 +194,7 @@ class BaseDataset(Dataset, ABC):
         self._make_conversation(
           item,
           media_dir=self.media_dir,
-          use_cft=self.use_cot
+          use_cot=self.use_cot
         )
       )
     return conversation

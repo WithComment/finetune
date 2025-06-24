@@ -4,7 +4,7 @@ import datasets
 from transformers import AutoTokenizer, Qwen2_5_VLProcessor
 from ..argument import ProcessingArguments, DataArguments
 from .packing import fast_best_fit_decreasing
-from .utils import get_image, get_video_frames
+from .utils import get_image, get_video_frames, filter_cot, smart_resize
 from .base import BaseDataset
 import pickle
 
@@ -32,15 +32,22 @@ class SFTDataset(BaseDataset):
 
     bin_capacity = data_args.model_max_length
     ds_w_num_tokens = self.get_num_tokens()
-    short = ds_w_num_tokens.filter(
+    total = len(self.ds)
+    keep = ds_w_num_tokens.filter(
       lambda x: x['num_tokens'] <= bin_capacity,
       num_proc=BaseDataset.num_proc,
       desc="Filtering too long items"
     )
-    total = len(self.ds)
-    logger.info(f"Found {total - len(short)} / {total} ({total - len(short) / total:.4f}) items with more than {bin_capacity} tokens.")
+    logger.info(f"Found {total - len(keep)} / {total} ({(total - len(keep)) / total:.4f}) items with more than {bin_capacity} tokens.")
+    if data_args.use_cot:
+      has_cot = keep.filter(
+        lambda x: filter_cot(x, self.media_dir.with_name('sub_segments')),
+      )
+      logger.info(f"Filtering out {len(keep) - len(has_cot)} items without COT.")
+      keep = has_cot
+    logger.info(f"Dataset {self.ds_key} has {len(keep)} {len(keep) / total:.4f} items after filtering.")
     
-    self.ds = short
+    self.ds = keep
     self.bins = [[i] for i in range(len(self.ds))]
     
     if data_args.data_packing:
@@ -49,6 +56,7 @@ class SFTDataset(BaseDataset):
       self.load_bins(
         self.ds['num_tokens'], self.bin_pkl_path, bin_capacity
       )
+      logger.info(f"Packing dataset into {len(self.bins)} bins.")
 
 
   def load_bins(self, num_tokens, path, bin_capacity):
@@ -111,13 +119,23 @@ class SFTDataset(BaseDataset):
 
       for img in images:
         img = get_image(img)
-        result = processor.image_processor(img)
-        num_tokens += result['image_grid_thw'].prod() // 4
+        h, w, h_tokens, w_tokens = smart_resize(
+          img.shape[-2], img.shape[-1],
+          processor.image_processor.max_pixels,
+          processor.image_processor.min_pixels
+        )
+        num_tokens += h_tokens * w_tokens
 
       for vid in videos:
         vid, fps = get_video_frames(vid, proc_args)
-        result = processor.video_processor(vid, fps=fps)
-        num_tokens += result['video_grid_thw'].prod() // 4
+        nframes = vid.shape[0]
+        frame = vid[:1]
+        h, w, h_tokens, w_tokens = smart_resize(
+          frame.shape[-2], frame.shape[-1],
+          processor.video_processor.max_pixels,
+          processor.video_processor.min_pixels
+        )
+        num_tokens += h_tokens * w_tokens * nframes // processor.video_processor.temporal_patch_size
 
       item['media_count'] = len(images) + len(videos)
       item['num_content_tokens'] = num_tokens

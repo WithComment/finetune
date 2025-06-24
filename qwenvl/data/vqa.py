@@ -24,12 +24,12 @@ class VQADataset(BenchmarkDataset):
         },
         {
           'type': 'text',
-          'text': item['question']
+          'text': restriction_prompt
         },
         {
           'type': 'text',
-          'text': restriction_prompt
-        }
+          'text': item['question']
+        },
       ]
     })
   

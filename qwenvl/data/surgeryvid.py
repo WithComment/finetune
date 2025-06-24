@@ -28,7 +28,7 @@ class SurgeryVidDataset(BenchmarkDataset):
           item,
           subtitle_dir=self.media_dir.with_name('sub_segments'),
           media_dir=self.media_dir,
-          use_cot=self.use_cot
+          use_cot=self.data_args.use_cot
         )
       )
     return conversation
@@ -36,7 +36,7 @@ class SurgeryVidDataset(BenchmarkDataset):
   @staticmethod
   def _make_conversation(item, subtitle_dir, media_dir, use_cot):
     conversation = list()
-    restriction_prompt = "Answer straightforwardly and concisely: "
+    restriction_prompt = "Answer concisely in no more than a few words: "
     cot = None
     if use_cot:
       cot = subtitle_dir / item['video'].replace('.mp4', '.en.vtt')
@@ -62,15 +62,16 @@ class SurgeryVidDataset(BenchmarkDataset):
             },
         ]
     })
-    conversation.append({
-        'role': 'assistant',
-        'content': [
-            {
-                'type': 'text',
-                'text': cot
-            }
-        ]
-    })
+    if cot:
+      conversation.append({
+          'role': 'assistant',
+          'content': [
+              {
+                  'type': 'text',
+                  'text': cot
+              }
+          ]
+      })
     return conversation
 
   @staticmethod

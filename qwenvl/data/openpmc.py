@@ -40,9 +40,9 @@ class OpenpmcDataset(SFTDataset):
 
 
   @staticmethod
-  def _make_conversation(item, media_dir, use_cft):
+  def _make_conversation(item, media_dir, use_cot):
     conversation = list()
-    if use_cft:
+    if use_cot:
       raise NotImplementedError()
 
     if not (intext_ref := item['intext_refs_summary']):
@@ -51,17 +51,13 @@ class OpenpmcDataset(SFTDataset):
       'role': 'user',
       'content': [
         {
-          'type': 'text',
-          'text': intext_ref
+          'type': 'image',
+          'image': item['image']
         },
         {
           'type': 'text',
           'text': random.choice(IMG_PROMPTS)
         },
-        {
-          'type': 'image',
-          'image': item['image']
-        }
       ]
     })
     conversation.append({
@@ -89,7 +85,7 @@ class OpenpmcDataset(SFTDataset):
       return json.loads(item['jsonl'])
 
     return (ds
-      .map(_load_jsonl, num_proc=num_proc, remove_columns=['jsonl'])
+      .map(_load_jsonl, num_proc=num_proc, remove_columns=['jsonl'], desc='loading json')
       .cast_column('jpg', datasets.Image(decode=False))
       .filter(_filter_image, num_proc=num_proc)
       .cast_column('jpg', datasets.Image(decode=True))

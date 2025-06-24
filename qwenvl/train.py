@@ -81,16 +81,12 @@ def set_processor(processor, proc_args: ProcessingArguments, data_args: DataArgu
 
   tokenizer.model_max_length = data_args.model_max_length
 
-  img_processor.max_pixels = proc_args.image_max_pixels
-  img_processor.min_pixels = proc_args.image_min_pixels
-  img_processor.size["shortest_edge"] = proc_args.shortest_edge
-
-  vid_processor.min_pixels = proc_args.video_min_pixels
-  vid_processor.max_pixels = proc_args.video_max_pixels
-  vid_processor.min_frame_pixels = proc_args.video_min_pixels
-  vid_processor.max_frame_pixels = proc_args.video_max_pixels
-  vid_processor.size['shortest_edge'] = proc_args.shortest_edge
-  vid_processor.default_to_square = proc_args.video_default_to_square
+  img_processor.default_to_square = False
+  vid_processor.default_to_square = False
+  img_processor.max_pixels = 2048 * 28 * 28
+  vid_processor.max_pixels = 512 * 28 * 28
+  img_processor.min_pixels = 64 * 28 * 28
+  vid_processor.min_pixels = 64 * 28 * 28
 
   return processor
 

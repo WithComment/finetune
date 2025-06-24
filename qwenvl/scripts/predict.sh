@@ -14,7 +14,7 @@
 #SBATCH --output=logs/infer/%j.out
 #SBATCH --error=logs/infer/%j.err
 #SBATCH --requeue
-#SBATCH --time=4:00:00
+#SBATCH --time=8:00:00
 #SBATCH --signal=B:USR1@60
 #SBATCH --signal=B:TERM@60
 

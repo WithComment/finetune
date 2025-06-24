@@ -34,12 +34,17 @@ export NPROC_PER_NODE=$SLURM_NTASKS_PER_NODE
 export CUDA_HOME=/pkgs/cuda-12.4
 export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 dataset_use=$1
+use_cot=${2:-false}
 
 base_model=Qwen/Qwen2.5-VL-3B-Instruct
 run_name="${base_model}-${dataset_use}"
-output_dir="/projects/cft_vlm/.checkpoint/${run_name}"
+if [ "$use_cot" = true ]; then
+    run_name="${run_name}-cot"
+fi
+output_dir="/projects/cft_vlm/.checkpoint/new/${run_name}"
 
 # Create output directory
 mkdir -p ${output_dir}
@@ -54,10 +59,10 @@ model_args="
 data_args="
     --dataset_use ${dataset_use} \
     --data_packing True \
-    --use_cot True \
+    --use_cot False \
     --split train \
-    --model_max_length 1600 \
-    --num_proc 32"
+    --model_max_length 16384 \
+    --num_proc 24"
 
 proc_args=""
 
@@ -97,7 +102,7 @@ if [ $? -ne 0 ]; then
     exit
 fi
 
-requeue=${2:-true}
+requeue=${3:-true}
 
 echo "Starting training process in the background..."
 # Run torchrun in the background and save its PID

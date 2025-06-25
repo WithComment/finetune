@@ -1,4 +1,5 @@
 import json
+import math
 from pathlib import Path
 import subprocess
 from typing import Callable
@@ -32,16 +33,19 @@ def make_cot(subtitle_file: Path):
   for caption in sub:
     cot += f"<timestamp>: {caption.start} --> {caption.end}\n"
     cot += f"<content>: {caption.text}\n\n"
-  cot += "### End thinking"
+  cot += "### End thinking\n\n"
   return cot
 
-
+def filter_cot(item: dict, subtitle_dir: Path) -> bool:
+  cot = subtitle_dir / item['video'].replace('.mp4', '.en.vtt')
+  return cot.exists()
+  
 def _process_video_with_decord(
   video_path: str,
   vid_proc_args: ProcessingArguments
 ) -> tuple[np.ndarray, float]:
   
-  vr = VideoReader(video_path, num_threads=4)
+  vr = VideoReader(video_path)
   total_frames = len(vr)
   avg_fps = vr.get_avg_fps()
   
@@ -60,7 +64,7 @@ def _process_video_with_decord(
   )
 
   frame_idx = np.linspace(0, total_frames - 1, target_frames, dtype=int)
-  video = vr.get_batch(frame_idx).asnumpy()
+  video = torch.tensor(vr.get_batch(frame_idx).asnumpy()).permute(0, 3, 1, 2)
   return video, target_frames / video_length
 
 
@@ -116,7 +120,7 @@ def _process_video_with_opencv(
   if not frames:
     raise ValueError("Could not extract any frames using OpenCV.")
     
-  video = np.stack(frames)
+  video = torch.tensor(np.stack(frames)).permute(0, 3, 1, 2)
   effective_fps = target_frames / video_length
   return video, effective_fps
 
@@ -124,22 +128,14 @@ def _process_video_with_opencv(
 def get_video_frames(
   video_file_path: Path,
   vid_proc_args: ProcessingArguments
-) -> tuple[np.ndarray, float]:
+) -> tuple[torch.Tensor, float]:
   """
   Samples frames from a video file with a robust fallback mechanism.
   
   It first tries using OpenCV for speed and falls back to PyAV for robustness.
   """
   video_str_path = str(video_file_path)
-  try:
-    return _process_video_with_decord(video_str_path, vid_proc_args)
-  except Exception as e:
-    print(f"Decord failed: {e}. Falling back to opencv.")
-  try:
-    return _process_video_with_opencv(video_str_path, vid_proc_args)
-  except Exception as e_opencv:
-    print(f"OpenCV failed: {e_opencv}")
-    return None
+  return _process_video_with_opencv(video_str_path, vid_proc_args)
 
 
 def get_image(image) -> Image.Image:
@@ -202,8 +198,7 @@ def make_labels(
   a_end_idx = list(zip(*torch.where(input_ids == a_end_ids[0])))
   a_start_idx = list(zip(*torch.where(input_ids == a_start_ids[0])))
   assert len(a_start_idx) == len(a_end_idx)
-  for (batch_idx, start_idx), (batch_idx, end_idx) in zip(a_start_idx, a_end_idx):
-    assert batch_idx == batch_idx, "Batch indices do not match"
+  for (batch_idx, start_idx), (_, end_idx) in zip(a_start_idx, a_end_idx):
     assert start_idx < end_idx, "Start index must be less than end index"
     start_end_idx = start_idx + len(a_start_ids)
     if torch.equal(input_ids[batch_idx, start_idx:start_end_idx], a_start_ids):
@@ -254,7 +249,10 @@ def make_model_input(
     conversations, proc_args)
   
   text = processor.apply_chat_template(
-      conversations, add_generation_prompt=not for_training, tokenize=False
+      conversations,
+      add_generation_prompt=not for_training,
+      tokenize=False, 
+      add_vision_id=True
   )
   data_dict = processor(
       text=text,
@@ -283,40 +281,6 @@ def filter_image(item, image_key='image', id_key=None):
     print(f"Error processing image {item.get(id_key, 'unknown')}: {e}")
     return False
 
-  return True
-
-
-def processed_the_same(
-    saved_path: Path,
-    processor: Qwen2_5_VLProcessor,
-    check_model_length: bool = False
-) -> bool:
-  """
-  Return whether the proc_args.json file in the saved_path matches the provided proc_args.
-  If there is an exception while loading the file, return False.
-  """
-  if proc_args is None:
-    return False
-  proc_args_d = proc_args.__dict__
-  
-  try:
-    with open(saved_path / 'proc_args.json', 'r') as f:
-      og_proc_args_d = ProcessingArguments(**json.load(f)).__dict__
-    for k in ['padding_side', 'shortest_edge']:
-      proc_args_d.pop(k, None)
-      og_proc_args_d.pop(k, None)
-      
-    if not check_model_length:
-      proc_args_d.pop('model_max_length', None)
-      og_proc_args_d.pop('model_max_length', None)
-      
-    if og_proc_args_d != proc_args_d:
-      return False
-    
-  except Exception as e:
-    print(f"Error loading metadata: {e}")
-    return False
-  
   return True
 
 
@@ -364,3 +328,44 @@ def reencode(item, media_dir, logger):
 
   item['status'] = 'OK'
   return item
+
+
+def round_by_factor(number: int, factor: int) -> int:
+  """Returns the closest integer to 'number' that is divisible by 'factor'."""
+  return round(number / factor) * factor
+
+
+def ceil_by_factor(number: int, factor: int) -> int:
+  """Returns the smallest integer greater than or equal to 'number' that is divisible by 'factor'."""
+  return math.ceil(number / factor) * factor
+
+
+def floor_by_factor(number: int, factor: int) -> int:
+  """Returns the largest integer less than or equal to 'number' that is divisible by 'factor'."""
+  return math.floor(number / factor) * factor
+
+
+def smart_resize(
+    height: int, width: int, max_pixels: int, min_pixels: int
+) -> tuple[int]:
+  """
+  Rescales the image so that the following conditions are met:
+
+  1. Both dimensions (height and width) are divisible by 'factor'.
+
+  2. The total number of pixels is within the range ['min_pixels', 'max_pixels'].
+
+  3. The aspect ratio of the image is maintained as closely as possible.
+  """
+  factor = 28
+  h_bar = max(factor, round_by_factor(height, factor))
+  w_bar = max(factor, round_by_factor(width, factor))
+  if h_bar * w_bar > max_pixels:
+    beta = math.sqrt((height * width) / max_pixels)
+    h_bar = max(factor, floor_by_factor(height / beta, factor))
+    w_bar = max(factor, floor_by_factor(width / beta, factor))
+  elif h_bar * w_bar < min_pixels:
+    beta = math.sqrt(min_pixels / (height * width))
+    h_bar = ceil_by_factor(height * beta, factor)
+    w_bar = ceil_by_factor(width * beta, factor)
+  return h_bar, w_bar, h_bar // factor, w_bar // factor

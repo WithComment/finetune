@@ -4,12 +4,12 @@ import sys
 
 # Default values
 DEFAULT_DATASET_SPLITS = [
-    ("surgery-vid", "test", 1.0),
-    ("path_vqa", "test", 1.0),
-    ("vqa_rad", "train", 1.0),
+    ("surgery-vid", "test", 0.01),
+    # ("path_vqa", "test", 1.0),
+    # ("vqa_rad", "train", 1.0),
 ]
 DEFAULT_MODEL_NAMES = [
-    "Qwen/Qwen2.5-VL-3B-Instruct",
+    "new/Qwen/Qwen2.5-VL-3B-Instruct-open-pmc-tiny",
 ]
 
 

@@ -35,6 +35,8 @@ from .argument import *
 from transformers import Trainer, Qwen2_5_VLForConditionalGeneration
 
 from transformers.utils import logging as hf_logging
+import shutil
+import glob
 
 hf_logging.set_verbosity_error()
 torch.set_num_threads(1)
@@ -81,12 +83,12 @@ def set_processor(processor, proc_args: ProcessingArguments, data_args: DataArgu
 
   tokenizer.model_max_length = data_args.model_max_length
 
-  img_processor.default_to_square = False
-  vid_processor.default_to_square = False
-  img_processor.max_pixels = 2048 * 28 * 28
-  vid_processor.max_pixels = 512 * 28 * 28
-  img_processor.min_pixels = 64 * 28 * 28
-  vid_processor.min_pixels = 64 * 28 * 28
+  img_processor.default_to_square = proc_args.default_to_square
+  vid_processor.default_to_square = proc_args.default_to_square
+  img_processor.max_pixels = proc_args.image_max_pixels
+  vid_processor.max_pixels = proc_args.video_max_pixels
+  img_processor.min_pixels = proc_args.image_min_pixels
+  vid_processor.min_pixels = proc_args.video_min_pixels
 
   return processor
 
@@ -107,9 +109,9 @@ def make_data_module(
   else:
     assert issubclass(ds_class, BenchmarkDataset)
     
-  if issubclass(ds_class, OpenbiomedvidDataset) and data_args.data_packing:
-    logger.warning("OpenbiomedvidDataset does not support data packing due to video handling. Setting data_packing to False.")
-    data_args.data_packing = False
+  # if issubclass(ds_class, OpenbiomedvidDataset) and data_args.data_packing:
+  #   logger.warning("OpenbiomedvidDataset does not support data packing due to video handling. Setting data_packing to False.")
+  #   data_args.data_packing = False
     
   ds = ds_class(
       name=ds_name,
@@ -270,6 +272,13 @@ def train(attn_implementation="flash_attention_2"):
   trainer.save_model(training_args.output_dir)
   if trainer.is_world_process_zero():
     processor.save_pretrained(training_args.output_dir)
+  # Clean up checkpoints to save disk space
+  if trainer.is_world_process_zero():
+    checkpoint_dirs = glob.glob(os.path.join(training_args.output_dir, "checkpoint-*"))
+    for checkpoint_dir in checkpoint_dirs:
+      if os.path.isdir(checkpoint_dir):
+        shutil.rmtree(checkpoint_dir)
+        rank0_print(f"Removed checkpoint directory: {checkpoint_dir}")
 
 
 if __name__ == "__main__":

@@ -40,13 +40,12 @@ class ProcessingArguments:
   These arguments are important for content token count.
   They will be saved.
   """
-  image_min_pixels: int = field(default=PATCH_SIZE * 8 * 8)
-  image_max_pixels: int = field(default=PATCH_SIZE * 8 * 40)
-  shortest_edge: int = field(default=PATCH_WIDTH * 8)
+  image_min_pixels: int = field(default=PATCH_SIZE * 64)
+  image_max_pixels: int = field(default=PATCH_SIZE * 2048)
+  default_to_square: bool = field(default=False)
 
-  video_min_pixels: int = field(default=PATCH_SIZE * 8 * 8)
-  video_max_pixels: int = field(default=PATCH_SIZE * 8 * 24)
-  video_default_to_square: bool = field(default=False)
+  video_min_pixels: int = field(default=PATCH_SIZE * 64)
+  video_max_pixels: int = field(default=PATCH_SIZE * 512)
   video_max_frames: int = field(default=30)
   video_min_frames: int = field(default=4)
   base_interval: int = field(default=1)

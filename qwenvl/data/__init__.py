@@ -59,7 +59,7 @@ avail_datasets = {
   },
   "openbiomedvid": {
     "ds_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/dataset",
-    "media_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/vid_segments",
+    "media_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/vid_1fps",
     "ds_class": OpenbiomedvidDataset,
     "ds_key": "connectthapa84/OpenBiomedVid"
   }

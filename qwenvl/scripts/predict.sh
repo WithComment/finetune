@@ -38,6 +38,8 @@ export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 dataset_use=$1
 split=$2
 model_use=$3
+portion=${4:-1.0}
+requeue=${5:-true}
 if [ -z "$model_use" ]; then
   echo "No model specified, using default: 'Qwen/Qwen2.5-VL-3B-Instruct'"
   model_use="Qwen/Qwen2.5-VL-3B-Instruct"
@@ -49,7 +51,7 @@ eval_args="
 data_args="
     --dataset_use ${dataset_use} \
     --split ${split} \
-    --use_cot True"
+    --portion ${portion}"
 
 proc_args=""
 
@@ -59,8 +61,6 @@ args="
     ${proc_args}"
 
               
-requeue=${4:-true}
-
 echo "Starting training process in the background..."
 # Run torchrun in the background and save its PID
 torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.predict ${args} &

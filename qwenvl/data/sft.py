@@ -111,31 +111,36 @@ class SFTDataset(BaseDataset):
     Content are defined by the `get_content` method.
     """
     def _get_num_content_tokens(item):
-      texts, images, videos = get_content_fn(item)
+      try:
+        texts, images, videos = get_content_fn(item)
 
-      num_tokens = 0
-      for text in texts:
-        num_tokens += len(processor.tokenizer.encode(text))
+        num_tokens = 0
+        for text in texts:
+          num_tokens += len(processor.tokenizer.encode(text))
 
-      for img in images:
-        img = get_image(img)
-        h, w, h_tokens, w_tokens = smart_resize(
-          img.shape[-2], img.shape[-1],
-          processor.image_processor.max_pixels,
-          processor.image_processor.min_pixels
-        )
-        num_tokens += h_tokens * w_tokens
+        for img in images:
+          img = get_image(img)
+          h, w, h_tokens, w_tokens = smart_resize(
+            img.height, img.width,
+            processor.image_processor.max_pixels,
+            processor.image_processor.min_pixels
+          )
+          num_tokens += h_tokens * w_tokens
 
-      for vid in videos:
-        vid, fps = get_video_frames(vid, proc_args)
-        nframes = vid.shape[0]
-        frame = vid[:1]
-        h, w, h_tokens, w_tokens = smart_resize(
-          frame.shape[-2], frame.shape[-1],
-          processor.video_processor.max_pixels,
-          processor.video_processor.min_pixels
-        )
-        num_tokens += h_tokens * w_tokens * nframes // processor.video_processor.temporal_patch_size
+        for vid in videos:
+          vid, fps = get_video_frames(vid, proc_args)
+          nframes = vid.shape[0]
+          frame = vid[:1]
+          h, w, h_tokens, w_tokens = smart_resize(
+            frame.shape[-2], frame.shape[-1],
+            processor.video_processor.max_pixels,
+            processor.video_processor.min_pixels
+          )
+          num_tokens += h_tokens * w_tokens * nframes // processor.video_processor.temporal_patch_size
+      except Exception as e:
+        logger.error(f"Error processing item {item['id']}: {e}")
+        texts, images, videos = [], []
+        num_tokens = 0
 
       item['media_count'] = len(images) + len(videos)
       item['num_content_tokens'] = num_tokens
@@ -143,7 +148,7 @@ class SFTDataset(BaseDataset):
 
     return ds.map(
       _get_num_content_tokens,
-      num_proc=BaseDataset.num_proc,
+      num_proc=4 or BaseDataset.num_proc,
       desc="Counting content tokens",
     )
 
@@ -155,8 +160,6 @@ class SFTDataset(BaseDataset):
     Save the field num_content_tokens to the dataset,
     along with the processing arguments that affect the content token count.
     """
-    self.ds = datasets.load_dataset(self.ds_key)
-    self.preprocess()
     self.ds = self._get_num_content_tokens(
       self.ds,
       self.processor,
@@ -167,7 +170,6 @@ class SFTDataset(BaseDataset):
     with open(proc_args_path, 'w') as f:
       json.dump(self.proc_args.__dict__, f, indent=2)
     self.ds.save_to_disk(self.ds_dir)
-    self.ds = self.ds[self.split]
     return self.ds
 
   def get_num_tokens(self):

@@ -186,9 +186,11 @@ def predict(
   device = f"cuda:{local_rank}"
 
   model, processor, _ = load_pretrained_qwen(model_path, device)
-  if model_path.endswith('-cot'):
-    data_args.use_cot = True
+  data_args.use_cot = '-cot' in model_path
+  if data_args.use_cot:
     logger.info("Using COT for inference.")
+  else:
+    logger.info("NOT using COT for inference.")
   processor = set_processor(processor, proc_args, data_args)
   data_module = rank0_make_data_module(
       processor=processor,
@@ -201,8 +203,10 @@ def predict(
 
   eval_dataset = data_module['eval_dataset']
   collate_fn = data_module['data_collator']
-
+  
   output_dir = eval_dataset.ds_dir.parent.parent / 'results' / data_args.split / Path(model_path).name
+  if 'new' in model_path:
+    output_dir = output_dir / 'new'
   generate_output(
       model,
       world_size=world_size,

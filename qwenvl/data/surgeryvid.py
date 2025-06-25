@@ -22,6 +22,7 @@ class SurgeryVidDataset(BenchmarkDataset):
   
   def make_conversation(self, bin):
     conversation = list()
+
     for item in bin:
       conversation.extend(
         self._make_conversation(
@@ -36,8 +37,17 @@ class SurgeryVidDataset(BenchmarkDataset):
   @staticmethod
   def _make_conversation(item, subtitle_dir, media_dir, use_cot):
     conversation = list()
-    restriction_prompt = "Answer concisely in no more than a few words: "
     cot = None
+    
+    system_prompt = '''
+    You are an experienced surgeon.
+    '''
+
+    conversation.append({
+        'role': 'system',
+        'content': system_prompt
+    })
+
     if use_cot:
       cot = subtitle_dir / item['video'].replace('.mp4', '.en.vtt')
       if not cot.exists():
@@ -45,6 +55,12 @@ class SurgeryVidDataset(BenchmarkDataset):
         cot = None
       else:
         cot = make_cot(cot)
+    restriction_prompt = '''
+    1. Answer the question directly and factually.
+    2. Your entire response must be 10 words or less.
+    3. Use ONLY phrases or keywords.
+    4. Do NOT add any introductory or concluding text.
+    '''
     conversation.append({
         'role': 'user',
         'content': [
@@ -53,13 +69,13 @@ class SurgeryVidDataset(BenchmarkDataset):
                 'video': str(media_dir / item['video'])
             },
             {
-              'type': 'text',
-              'text': restriction_prompt
-            },
-            {
                 'type': 'text',
                 'text': item['question']
             },
+            {
+                'type': 'text',
+                'text': restriction_prompt
+            }
         ]
     })
     if cot:

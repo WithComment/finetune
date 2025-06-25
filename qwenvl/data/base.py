@@ -74,9 +74,9 @@ class BaseDataset(Dataset, ABC):
     if force or not self.ds_dir.exists():
       logger.info(f"{force=}, {self.ds_dir.exists()=}, (re)downloading dataset {self.ds_key} to {self.ds_dir}")
       self.ds = datasets.load_dataset(self.ds_key)
-      self.ds.cleanup_cache_files()
       self.ds = self.preprocess()
       self.ds.save_to_disk(str(self.ds_dir))
+      self.ds.cleanup_cache_files()
       logger.info(f"Dataset {self.ds_key} saved to {self.ds_dir}")
       self.ds = self.ds[self.split]
       

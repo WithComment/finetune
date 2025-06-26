@@ -20,8 +20,7 @@ class DataArguments:
   dataset_use: str = field(default="")
   data_packing: bool = field(default=True)
   split: str = field(default="train")
-  use_cot: bool = field(default=False)
-  use_cft: bool = field(default=False)
+  mode: str = field(default="ift", metadata={"help": "Training mode: 'cft', 'cpt', or 'ift'"})
   model_max_length: int = field(default=3072)
   num_proc: int = field(default=32)
   portion: float = field(default=1.0)
@@ -34,6 +33,7 @@ class TrainingArguments(transformers.TrainingArguments):
   optim: str = field(default="adamw_torch")
   mm_projector_lr: Optional[float] = None
   vision_tower_lr: Optional[float] = None
+  min_lr_ratio: Optional[float] = field(default=0.1, metadata={"help": "Minimum learning rate ratio for cosine_with_min_lr scheduler"})
 
 
 @dataclass

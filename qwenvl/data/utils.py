@@ -183,7 +183,7 @@ def get_images_and_videos(
   return (images, videos, fpss)
 
 
-def make_labels_cft(
+def make_labels(
     input_ids: torch.Tensor,
     tokenizer: PreTrainedTokenizer,
     ignore_idx: int = -100,
@@ -215,7 +215,7 @@ def make_labels_cft(
   return labels
 
 
-def make_labels(
+def make_labels_chat(
     input_ids: torch.Tensor,
     tokenizer: PreTrainedTokenizer,
     ignore_idx: int = -100,
@@ -270,14 +270,14 @@ def make_prompt(
     conversations: list[list[dict]],
     tokenizer: PreTrainedTokenizer,
     for_training: bool,
-    use_cft: bool,
+    mode: str,
 ) -> str:
   """
   Make a prompt for the model.
   If for_training is True, it will return a conversation template.
   If for_training is False, it will return a single string.
   """
-  if use_cft:
+  if mode == "cft" or mode == "cpt":
     text = list()
     for convo in conversations:
       for message in convo:
@@ -303,7 +303,7 @@ def make_model_input(
     processor: Qwen2_5_VLProcessor,
     proc_args: ProcessingArguments,
     for_training: bool,
-    use_cft: bool,
+    mode: str,
 ):
   """
   Conversation is a list of dictionaries which contains multiple messages.
@@ -319,7 +319,7 @@ def make_model_input(
       conversations,
       processor.tokenizer,
       for_training=for_training,
-      use_cft=use_cft
+      mode=mode
   )
   data_dict = processor(
       text=text,
@@ -331,8 +331,8 @@ def make_model_input(
       padding_side='right',  # Right-pad for flash_attention_2
   )
   if for_training:
-    if use_cft:
-      data_dict['labels'] = make_labels_cft(
+    if mode == 'ift':
+      data_dict['labels'] = make_labels_chat(
           data_dict['input_ids'],
           processor.tokenizer
       )

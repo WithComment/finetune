@@ -70,28 +70,47 @@ class OpenpmcDataset(SFTDataset):
 
 
   @staticmethod
-  def _make_conversation(item, media_dir, use_cot, use_cft):
+  def _make_conversation(item, media_dir, mode):
     conversation = list()
-    if use_cot:
-      raise NotImplementedError()
-
-    conversation.append({
-      'role': 'user',
-      'content': [
-        {
-          'type': 'text',
-          'text': random.choice(CFT_PROMPTS)
-        },
-        {
-          'type': 'image',
-          'image': item['image']
-        },
-        {
-          'type': 'text',
-          'text': item['sub_caption']
-        }
-      ]
-    })
+    if mode == "ift":
+      conversation.append({
+        'role': 'user',
+        'content': [
+          {
+            'type': 'image',
+            'image': item['image']
+          },
+          {
+            'type': 'text',
+            'text': random.choice(IMG_PROMPTS)
+          },
+        ]
+      })
+      conversation.append({
+        'role': 'assistant',
+        'content': [{
+            'type': 'text',
+            'text': item['sub_caption']
+          }]
+      })
+    if mode == "cft" or mode == "cpt":
+      conversation.append({
+        'role': None, # No role in CFT or CPT
+        'content': [
+          {
+            'type': 'text',
+            'text': random.choice(CFT_PROMPTS) if mode == "cft" else ''
+          },
+          {
+            'type': 'image',
+            'image': item['image']
+          },
+          {
+            'type': 'text',
+            'text': item['sub_caption']
+          }
+        ]
+      })
     return conversation
   
 

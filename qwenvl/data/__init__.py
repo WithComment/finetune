@@ -15,12 +15,6 @@ from .vqa import VQADataset
 from .surgeryvid import SurgeryVidDataset
 
 avail_datasets = {
-  "fashion-mnist": {
-    "ds_dir": "/projects/cft_vlm/datasets/fashion_mnist/data/dataset",
-    "media_dir": None,
-    "ds_class": FashionMnistDataset,
-    "ds_key": "zalando-datasets/fashion_mnist"
-  },
   "path-vqa": {
     "ds_dir": "/projects/cft_vlm/datasets/path_vqa/data/dataset",
     "media_dir": None,
@@ -32,6 +26,12 @@ avail_datasets = {
     "media_dir": None,
     "ds_class": VQADataset,
     "ds_key": "flaviagiammarino/vqa-rad"
+  },
+  "slake": {
+    "ds_dir": "/projects/cft_vlm/datasets/slake/data/dataset",
+    "media_dir": None,
+    "ds_class": VQADataset,
+    "ds_key": "mdwiratathya/SLAKE-vqa-english"
   },
   "surgery-vid": {
     "ds_dir": "/projects/cft_vlm/datasets/surgeryvid/data/dataset",

@@ -15,7 +15,7 @@ logger = get_logger = get_logger(__name__)
 class SFTDataset(BaseDataset):
 
   for_training: bool = True
-  use_cft: bool
+  mode: str
 
   def __init__(
       self,
@@ -25,8 +25,6 @@ class SFTDataset(BaseDataset):
       data_args: DataArguments,
   ) -> None:
     super().__init__(name, processor, proc_args, data_args)
-    self.use_cft = data_args.use_cft
-    assert self.use_cft, "SFTDataset should be used with use_cft=True."
 
     logger.info(f"{self.need_num_content_tokens()=}")
     if self.need_num_content_tokens():
@@ -42,12 +40,7 @@ class SFTDataset(BaseDataset):
       desc="Filtering too long items"
     )
     logger.info(f"Found {total - len(keep)} / {total} ({(total - len(keep)) / total:.4f}) items with more than {bin_capacity} tokens.")
-    if data_args.use_cot:
-      has_cot = keep.filter(
-        lambda x: filter_cot(x, self.media_dir.with_name('sub_segments')),
-      )
-      logger.info(f"Filtering out {len(keep) - len(has_cot)} items without COT.")
-      keep = has_cot
+
     logger.info(f"Dataset {self.ds_key} has {len(keep)} {len(keep) / total:.4f} items after filtering.")
     
     self.ds = keep
@@ -60,7 +53,7 @@ class SFTDataset(BaseDataset):
         self.ds['num_tokens'], self.bin_pkl_path, bin_capacity
       )
       logger.info(f"Packing dataset into {len(self.bins)} bins.")
-    logger.info(f"Example item: {self.make_model_input(self.make_conversation([random.choice(self.ds)]))[1]}")
+    logger.info(f"Example item: {self.make_model_input(self.make_conversation([random.choice(self.ds)]))[1][0]}")
 
 
   def load_bins(self, num_tokens, path, bin_capacity):

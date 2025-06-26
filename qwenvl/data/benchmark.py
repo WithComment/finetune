@@ -11,6 +11,3 @@ from . import BaseDataset
 class BenchmarkDataset(BaseDataset):
   
   for_training: bool = False
-  
-  def __init__(self, name, processor, proc_args, data_args, force: bool = False):
-    super().__init__(name, processor, proc_args, data_args, force)

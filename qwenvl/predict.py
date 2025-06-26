@@ -205,8 +205,6 @@ def predict(
   collate_fn = data_module['data_collator']
   
   output_dir = eval_dataset.ds_dir.parent.parent / 'results' / data_args.split / Path(model_path).name
-  if 'new' in model_path:
-    output_dir = output_dir / 'new'
   generate_output(
       model,
       world_size=world_size,

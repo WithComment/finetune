@@ -41,8 +41,7 @@ class BaseDataset(Dataset, ABC):
   ds_dir: Path
   media_dir: Path | None
   ds_key: str
-  use_cot: bool
-  use_cft: bool
+  mode: str
   processor: Qwen2_5_VLProcessor
   proc_args: ProcessingArguments
   for_training: bool
@@ -64,9 +63,12 @@ class BaseDataset(Dataset, ABC):
     self.processor = processor
     self.proc_args = proc_args
     self.data_args = data_args
-    self.use_cot = data_args.use_cot
-    self.use_cft = data_args.use_cft
+    self.mode = data_args.mode
     self.split = data_args.split
+    
+    # Validate mode
+    if self.mode not in ["cft", "cpt", "ift"]:
+      raise ValueError(f"Invalid mode: {self.mode}. Must be one of ['cft', 'cpt', 'ift']")
     
     self.ds_config = self._get_ds_config(name)
     self.ds_dir = self.ds_config['ds_dir']
@@ -161,8 +163,7 @@ class BaseDataset(Dataset, ABC):
   def _make_conversation(
       row: dict,
       media_dir: Path | None,
-      use_cot: bool,
-      use_cft: bool
+      mode: str
   ) -> list[dict]:
     """Always operate on a single row, i.e., a dict.
     """
@@ -197,8 +198,7 @@ class BaseDataset(Dataset, ABC):
         self._make_conversation(
           item,
           media_dir=self.media_dir,
-          use_cot=self.use_cot,
-          use_cft=self.use_cft
+          mode=self.mode
         )
       )
     return conversation
@@ -210,7 +210,7 @@ class BaseDataset(Dataset, ABC):
       processor=self.processor,
       proc_args=self.proc_args,
       for_training=self.for_training,
-      use_cft=self.use_cft
+      mode=self.mode
     )
 
 

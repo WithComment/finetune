@@ -12,7 +12,7 @@ class VQADataset(BenchmarkDataset):
     return texts, images, videos
   
   @staticmethod
-  def _make_conversation(item, media_dir, use_cft):
+  def _make_conversation(item, media_dir, mode):
     conversation = list()
     restriction_prompt = "Answer straightforwardly and concisely: "
     conversation.append({

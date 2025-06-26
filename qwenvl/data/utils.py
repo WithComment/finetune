@@ -25,6 +25,7 @@ torch.set_num_threads(1)
 IM_START = "<|im_start|>"
 IM_END = "<|im_end|>"
 
+
 def make_cot(subtitle_file: Path):
   if not subtitle_file.exists():
     return ''
@@ -36,26 +37,28 @@ def make_cot(subtitle_file: Path):
   cot += "### End thinking\n\n"
   return cot
 
+
 def filter_cot(item: dict, subtitle_dir: Path) -> bool:
   cot = subtitle_dir / item['video'].replace('.mp4', '.en.vtt')
   return cot.exists()
-  
+
+
 def _process_video_with_decord(
-  video_path: str,
-  vid_proc_args: ProcessingArguments
+    video_path: str,
+    vid_proc_args: ProcessingArguments
 ) -> tuple[np.ndarray, float]:
-  
+
   vr = VideoReader(video_path)
   total_frames = len(vr)
   avg_fps = vr.get_avg_fps()
-  
+
   base_interval = vid_proc_args.base_interval
   min_frames = vid_proc_args.video_min_frames
   max_frames = vid_proc_args.video_max_frames
-  
+
   if not (base_interval and min_frames and max_frames):
     return vr.get_batch(range(total_frames)).asnumpy(), avg_fps
-  
+
   video_length = total_frames / avg_fps
   num_frames_to_sample = round(video_length / base_interval)
 
@@ -69,8 +72,8 @@ def _process_video_with_decord(
 
 
 def _process_video_with_opencv(
-  video_path: str,
-  vid_proc_args: ProcessingArguments
+    video_path: str,
+    vid_proc_args: ProcessingArguments
 ) -> tuple[np.ndarray, float]:
   """
   Processes video using OpenCV. Raises an exception on failure.
@@ -102,36 +105,36 @@ def _process_video_with_opencv(
   video_length = total_frames / avg_fps
   num_frames_to_sample = round(video_length / vid_proc_args.base_interval)
   target_frames = min(
-    max(num_frames_to_sample, vid_proc_args.video_min_frames),
-    vid_proc_args.video_max_frames
+      max(num_frames_to_sample, vid_proc_args.video_min_frames),
+      vid_proc_args.video_max_frames
   )
 
   frame_idx = np.linspace(0, total_frames - 1, target_frames, dtype=int)
-  
+
   frames = []
   for i in frame_idx:
     cap.set(cv2.CAP_PROP_POS_FRAMES, i)
     ret, frame = cap.read()
     if ret:
       frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-  
+
   cap.release()
 
   if not frames:
     raise ValueError("Could not extract any frames using OpenCV.")
-    
+
   video = torch.tensor(np.stack(frames)).permute(0, 3, 1, 2)
   effective_fps = target_frames / video_length
   return video, effective_fps
 
 
 def get_video_frames(
-  video_file_path: Path,
-  vid_proc_args: ProcessingArguments
+    video_file_path: Path,
+    vid_proc_args: ProcessingArguments
 ) -> tuple[torch.Tensor, float]:
   """
   Samples frames from a video file with a robust fallback mechanism.
-  
+
   It first tries using OpenCV for speed and falls back to PyAV for robustness.
   """
   video_str_path = str(video_file_path)
@@ -149,7 +152,7 @@ def get_image(image) -> Image.Image:
 
 def get_images_and_videos(
     conversation: list[dict],
-    vid_proc_args: ProcessingArguments
+    vid_proc_args: ProcessingArguments,
 ) -> tuple[list[str], list[str]]:
   """Conversation should be like 
   [
@@ -180,6 +183,38 @@ def get_images_and_videos(
   return (images, videos, fpss)
 
 
+def make_labels_cft(
+    input_ids: torch.Tensor,
+    tokenizer: PreTrainedTokenizer,
+    ignore_idx: int = -100,
+) -> torch.Tensor:
+  labels = torch.ones_like(input_ids) * ignore_idx
+
+  # Get token IDs for the special tokens
+  im_end_token = tokenizer.encode(IM_END, add_special_tokens=False)[0]
+  vision_end_token = tokenizer.encode(
+      "<|vision_end|>", add_special_tokens=False)[0]
+
+  # Find all positions of these tokens
+  im_end_positions = (input_ids == im_end_token).nonzero(as_tuple=True)
+  vision_end_positions = (input_ids == vision_end_token).nonzero(as_tuple=True)
+
+  # For each vision_end token, find the next im_end token and unmask that region
+  if len(vision_end_positions[1]) > 0 and len(im_end_positions[1]) > 0:
+    for batch_idx, vision_end_idx in zip(vision_end_positions[0], vision_end_positions[1]):
+      # Find the next im_end token after this vision_end token
+      next_im_end_positions = im_end_positions[1][im_end_positions[1] > vision_end_idx]
+      if len(next_im_end_positions) > 0:
+        next_im_end_idx = next_im_end_positions[0]
+        # Unmask tokens between vision_end (exclusive) and im_end (exclusive)
+        start_idx = vision_end_idx + 1
+        end_idx = next_im_end_idx
+        if start_idx < end_idx:
+          labels[batch_idx, start_idx:end_idx] = input_ids[batch_idx,start_idx:end_idx]
+
+  return labels
+
+
 def make_labels(
     input_ids: torch.Tensor,
     tokenizer: PreTrainedTokenizer,
@@ -202,8 +237,8 @@ def make_labels(
     assert start_idx < end_idx, "Start index must be less than end index"
     start_end_idx = start_idx + len(a_start_ids)
     if torch.equal(input_ids[batch_idx, start_idx:start_end_idx], a_start_ids):
-      labels[batch_idx, start_end_idx:end_idx] = input_ids[batch_idx, start_end_idx:end_idx]
-      
+      labels[batch_idx, start_end_idx:end_idx] = input_ids[batch_idx,start_end_idx:end_idx]
+
   return labels
 
 
@@ -223,20 +258,52 @@ def get_batch_images_and_videos(
     fpss.extend(fps)
   image_count = sum(len(imgs) for imgs in images)
   video_count = sum(len(vids) for vids in videos)
-  
+
   return (
-    None if image_count == 0 else images,
-    None if video_count == 0 else videos,
-    None if video_count == 0 else fpss
+      None if image_count == 0 else images,
+      None if video_count == 0 else videos,
+      None if video_count == 0 else fpss
   )
 
+
+def make_prompt(
+    conversations: list[list[dict]],
+    tokenizer: PreTrainedTokenizer,
+    for_training: bool,
+    use_cft: bool,
+) -> str:
+  """
+  Make a prompt for the model.
+  If for_training is True, it will return a conversation template.
+  If for_training is False, it will return a single string.
+  """
+  if use_cft:
+    text = list()
+    for convo in conversations:
+      for message in convo:
+        text.append(IM_START)
+        contents = message['content']
+        for content in contents:
+          if content['type'] == 'text':
+            text.append(content['text'])
+          elif content['type'] == 'image':
+            text.append(f"<|vision_start|><|image_pad|><|vision_end|>")
+          elif content['type'] == 'video':
+            text.append(f"<|vision_start|><|video_pad|><|vision_end|>")
+        text.append(IM_END)
+    return ''.join(text)
+
+  return tokenizer.apply_chat_template(
+      conversations, tokenize=False, add_generation_prompt=not for_training
+  )
 
 
 def make_model_input(
     conversations: list[list[dict]],
     processor: Qwen2_5_VLProcessor,
     proc_args: ProcessingArguments,
-    for_training: bool
+    for_training: bool,
+    use_cft: bool,
 ):
   """
   Conversation is a list of dictionaries which contains multiple messages.
@@ -244,15 +311,15 @@ def make_model_input(
   if isinstance(conversations[0], dict):
     # Make it a batch.
     conversations = [conversations]
-    
+
   image_inputs, video_inputs, fpss = get_batch_images_and_videos(
-    conversations, proc_args)
-  
-  text = processor.apply_chat_template(
+      conversations, proc_args)
+
+  text = make_prompt(
       conversations,
-      add_generation_prompt=not for_training,
-      tokenize=False, 
-      add_vision_id=True
+      processor.tokenizer,
+      for_training=for_training,
+      use_cft=use_cft
   )
   data_dict = processor(
       text=text,
@@ -261,14 +328,20 @@ def make_model_input(
       fps=fpss if fpss else None,
       return_tensors="pt",
       padding=True,
-      padding_side='right', # Right-pad for flash_attention_2
+      padding_side='right',  # Right-pad for flash_attention_2
   )
   if for_training:
-    data_dict['labels'] = make_labels(
-      data_dict['input_ids'],
-      processor.tokenizer
-    )
-  return data_dict
+    if use_cft:
+      data_dict['labels'] = make_labels_cft(
+          data_dict['input_ids'],
+          processor.tokenizer
+      )
+    else:
+      data_dict['labels'] = make_labels(
+          data_dict['input_ids'],
+          processor.tokenizer
+      )
+  return data_dict, text
 
 
 def filter_image(item, image_key='image', id_key=None):

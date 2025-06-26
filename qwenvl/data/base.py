@@ -17,6 +17,7 @@
 
 import json
 from pathlib import Path
+import shutil
 import datasets
 import torch
 from torch.utils.data import Dataset
@@ -41,6 +42,7 @@ class BaseDataset(Dataset, ABC):
   media_dir: Path | None
   ds_key: str
   use_cot: bool
+  use_cft: bool
   processor: Qwen2_5_VLProcessor
   proc_args: ProcessingArguments
   for_training: bool
@@ -52,7 +54,6 @@ class BaseDataset(Dataset, ABC):
       processor: Qwen2_5_VLProcessor,
       proc_args: ProcessingArguments,
       data_args: DataArguments,
-      force: bool = False
   ) -> None:
     """
     If the dataset has been downloaded and processed (including content tokens),
@@ -64,15 +65,16 @@ class BaseDataset(Dataset, ABC):
     self.proc_args = proc_args
     self.data_args = data_args
     self.use_cot = data_args.use_cot
+    self.use_cft = data_args.use_cft
     self.split = data_args.split
     
     self.ds_config = self._get_ds_config(name)
     self.ds_dir = self.ds_config['ds_dir']
     self.media_dir = self.ds_config['media_dir']
     self.ds_key = self.ds_config['ds_key']
-    
-    if force or not self.ds_dir.exists():
-      logger.info(f"{force=}, {self.ds_dir.exists()=}, (re)downloading dataset {self.ds_key} to {self.ds_dir}")
+    if data_args.force or not self.ds_dir.exists():
+      logger.info(f"{data_args.force=}, {self.ds_dir.exists()=}, (re)downloading dataset {self.ds_key} to {self.ds_dir}")
+      shutil.rmtree(self.ds_dir, ignore_errors=True)
       self.ds = datasets.load_dataset(self.ds_key)
       self.ds = self.preprocess()
       self.ds.save_to_disk(str(self.ds_dir))
@@ -159,7 +161,8 @@ class BaseDataset(Dataset, ABC):
   def _make_conversation(
       row: dict,
       media_dir: Path | None,
-      use_cot: bool
+      use_cot: bool,
+      use_cft: bool
   ) -> list[dict]:
     """Always operate on a single row, i.e., a dict.
     """
@@ -194,18 +197,20 @@ class BaseDataset(Dataset, ABC):
         self._make_conversation(
           item,
           media_dir=self.media_dir,
-          use_cot=self.use_cot
+          use_cot=self.use_cot,
+          use_cft=self.use_cft
         )
       )
     return conversation
     
   
-  def make_model_input(self, batch_convo: list[dict]) -> dict:
+  def make_model_input(self, batch_convo: list[dict]) -> tuple[dict, str]:
     return make_model_input(
       conversations=batch_convo,
       processor=self.processor,
       proc_args=self.proc_args,
-      for_training=self.for_training
+      for_training=self.for_training,
+      use_cft=self.use_cft
     )
 
 
@@ -219,7 +224,7 @@ class BaseDataset(Dataset, ABC):
     batch_convo = list()
     for pack in batch:
       batch_convo.append(self.make_conversation(pack))
-    return self.make_model_input(batch_convo)
+    return self.make_model_input(batch_convo)[0]
 
 
   def __len__(self):

@@ -1,4 +1,5 @@
 import json
+import random
 from typing import Callable
 import datasets
 from transformers import AutoTokenizer, Qwen2_5_VLProcessor
@@ -14,6 +15,7 @@ logger = get_logger = get_logger(__name__)
 class SFTDataset(BaseDataset):
 
   for_training: bool = True
+  use_cft: bool
 
   def __init__(
       self,
@@ -21,9 +23,10 @@ class SFTDataset(BaseDataset):
       processor: Qwen2_5_VLProcessor,
       proc_args: ProcessingArguments,
       data_args: DataArguments,
-      force: bool = False
   ) -> None:
-    super().__init__(name, processor, proc_args, data_args, force)
+    super().__init__(name, processor, proc_args, data_args)
+    self.use_cft = data_args.use_cft
+    assert self.use_cft, "SFTDataset should be used with use_cft=True."
 
     logger.info(f"{self.need_num_content_tokens()=}")
     if self.need_num_content_tokens():
@@ -57,6 +60,7 @@ class SFTDataset(BaseDataset):
         self.ds['num_tokens'], self.bin_pkl_path, bin_capacity
       )
       logger.info(f"Packing dataset into {len(self.bins)} bins.")
+    logger.info(f"Example item: {self.make_model_input(self.make_conversation([random.choice(self.ds)]))[1]}")
 
 
   def load_bins(self, num_tokens, path, bin_capacity):
@@ -148,7 +152,7 @@ class SFTDataset(BaseDataset):
 
     return ds.map(
       _get_num_content_tokens,
-      num_proc=4 or BaseDataset.num_proc,
+      num_proc=BaseDataset.num_proc,
       desc="Counting content tokens",
     )
 
@@ -160,16 +164,19 @@ class SFTDataset(BaseDataset):
     Save the field num_content_tokens to the dataset,
     along with the processing arguments that affect the content token count.
     """
+    self.ds = datasets.load_dataset(self.ds_key)
+    self.preprocess()
     self.ds = self._get_num_content_tokens(
       self.ds,
       self.processor,
       self.proc_args,
       self.get_content
     )
+    self.ds.save_to_disk(self.ds_dir)
     proc_args_path = self.ds_dir / 'proc_args.json'
     with open(proc_args_path, 'w') as f:
       json.dump(self.proc_args.__dict__, f, indent=2)
-    self.ds.save_to_disk(self.ds_dir)
+    self.ds = self.ds[self.split]
     return self.ds
 
   def get_num_tokens(self):

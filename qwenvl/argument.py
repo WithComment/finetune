@@ -21,9 +21,11 @@ class DataArguments:
   data_packing: bool = field(default=True)
   split: str = field(default="train")
   use_cot: bool = field(default=False)
+  use_cft: bool = field(default=False)
   model_max_length: int = field(default=3072)
   num_proc: int = field(default=32)
   portion: float = field(default=1.0)
+  force: bool = field(default=False)
 
 
 @dataclass

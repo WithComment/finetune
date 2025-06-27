@@ -127,7 +127,7 @@ def insert(num_items: int, num_bins: int, bins_remaining_capacity: np.ndarray, s
   return bin_index, num_items, num_bins
 
 
-def fast_best_fit_decreasing(items, bin_capacity, batch_size=50000, progress_bar=True):
+def fast_best_fit_decreasing(items, bin_capacity, batch_size=50000, progress_bar=False):
   
   def _fast_best_fit_decreasing(items):
     num_items = 0

@@ -65,6 +65,7 @@ class BaseDataset(Dataset, ABC):
     self.data_args = data_args
     self.mode = data_args.mode
     self.split = data_args.split
+    self.sys_prompt = data_args.sys_prompt
     
     # Validate mode
     if self.mode not in ["cft", "cpt", "ift"]:

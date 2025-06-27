@@ -25,6 +25,7 @@ class DataArguments:
   num_proc: int = field(default=32)
   portion: float = field(default=1.0)
   force: bool = field(default=False)
+  sys_prompt: str = field(default='default')
 
 
 @dataclass

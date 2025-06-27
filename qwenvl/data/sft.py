@@ -1,11 +1,12 @@
 import json
+import os
 import random
 from typing import Callable
 import datasets
 from transformers import AutoTokenizer, Qwen2_5_VLProcessor
 from ..argument import ProcessingArguments, DataArguments
 from .packing import fast_best_fit_decreasing
-from .utils import get_image, get_video_frames, filter_cot, smart_resize
+from .utils import get_image, get_video_frames, filter_cot, make_prompt, smart_resize
 from .base import BaseDataset
 import pickle
 
@@ -53,7 +54,9 @@ class SFTDataset(BaseDataset):
         self.ds['num_tokens'], self.bin_pkl_path, bin_capacity
       )
       logger.info(f"Packing dataset into {len(self.bins)} bins.")
-    logger.info(f"Example item: {self.make_model_input(self.make_conversation([random.choice(self.ds)]))[1][0]}")
+        
+    example_item = self.make_model_input(self.make_conversation([random.choice(self.ds)]))[1]
+    logger.info(f"Example item: {example_item}")
 
 
   def load_bins(self, num_tokens, path, bin_capacity):
@@ -171,13 +174,18 @@ class SFTDataset(BaseDataset):
       json.dump(self.proc_args.__dict__, f, indent=2)
     self.ds = self.ds[self.split]
     return self.ds
+  
+  def make_prompt(self, item):
+    return make_prompt(
+      [self.make_conversation([item])],
+      self.processor.tokenizer, self.for_training, self.mode
+    )
 
   def get_num_tokens(self):
 
     tokenizer = self.processor.tokenizer
     def _get_num_tokens(item):
-      tokens = tokenizer.apply_chat_template(
-        self.make_conversation([item]))
+      tokens = tokenizer.tokenize(self.make_prompt(item)[0])
       media_count = item['media_count']
       item['num_tokens'] = len(tokens) - media_count + item['num_content_tokens']
       return item

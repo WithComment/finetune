@@ -58,8 +58,8 @@ def evaluate(
   if total == 0:
     raise ValueError("No items (of the right type) found in the output file.")
   logger.info(f"Total: {total}, Correct: {correct}, Incorrect: {incorrect}, Invalid: {invalid}")
-  logger.info(f"Accuracy with invalid: {correct / (total) * 100:.2f}%")
-  logger.info(f"Accuracy without invalid: {acc_wo_invalid:.2f}%")
+  logger.info(f"Accuracy with invalid: {correct / (total):.2f}")
+  logger.info(f"Accuracy without invalid: {acc_wo_invalid:.2f}")
   return {
     'total': total,
     'correct': correct,

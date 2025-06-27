@@ -36,14 +36,11 @@ export PATH=$CUDA_HOME/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 
 dataset_use=$1
-split=$2
-model_use=$3
+model_use=${2:-"Qwen/Qwen2.5-VL-3B-Instruct"}
+split=${3:-"test"}
 portion=${4:-1.0}
-requeue=${5:-true}
-if [ -z "$model_use" ]; then
-  echo "No model specified, using default: 'Qwen/Qwen2.5-VL-3B-Instruct'"
-  model_use="Qwen/Qwen2.5-VL-3B-Instruct"
-fi
+sys_prompt=${5:default}
+requeue=${6:-true}
 
 eval_args="
   --model_name_or_path ${model_use}"
@@ -51,7 +48,8 @@ eval_args="
 data_args="
     --dataset_use ${dataset_use} \
     --split ${split} \
-    --portion ${portion}"
+    --portion ${portion} \
+    --sys_prompt ${sys_prompt}"
 
 proc_args=""
 

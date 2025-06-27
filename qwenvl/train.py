@@ -15,7 +15,7 @@
 #    limitations under the License.
 
 from transformers.trainer_utils import get_last_checkpoint
-from transformers import Trainer
+from transformers import Trainer, TrainerCallback
 import logging
 import signal
 import os
@@ -37,11 +37,13 @@ from transformers import Trainer, Qwen2_5_VLForConditionalGeneration
 from transformers.utils import logging as hf_logging
 import shutil
 import glob
+from pathlib import Path
 
 hf_logging.set_verbosity_error()
 torch.set_num_threads(1)
 
 logger = get_logger(__name__)
+
 
 def rank0_print(msg, lvl="INFO"):
   lvl = getattr(logging, lvl.upper(), logging.INFO)
@@ -103,16 +105,12 @@ def make_data_module(
   BaseDataset.num_proc = data_args.num_proc
   ds_name = data_args.dataset_use
   ds_class = avail_datasets[ds_name]['ds_class']
-  
+
   if for_training:
     assert issubclass(ds_class, SFTDataset)
   else:
     assert issubclass(ds_class, BenchmarkDataset)
-    
-  # if issubclass(ds_class, OpenbiomedvidDataset) and data_args.data_packing:
-  #   logger.warning("OpenbiomedvidDataset does not support data packing due to video handling. Setting data_packing to False.")
-  #   data_args.data_packing = False
-    
+
   ds = ds_class(
       name=ds_name,
       processor=processor,
@@ -140,6 +138,7 @@ def rank0_make_data_module(*args, **kwargs):
   if hasattr(ds, 'bin_pkl_path') and dist.get_rank() == 0:
     ds.bin_pkl_path.unlink(missing_ok=True)
   return data_module
+
 
 def print_trainable_parameters_visual(model) -> None:
   """
@@ -204,6 +203,70 @@ def print_trainable_parameters(model) -> None:
   )
 
 
+class PruneOldStateCallback(TrainerCallback):
+  """
+  A custom callback to delete optimizer, scheduler, and trainer state
+  from older checkpoints, keeping only the model weights.
+  """
+
+  def on_save(self, args: TrainingArguments, state, control, **kwargs):
+    # This event is triggered after a checkpoint is saved.
+    if not state.is_world_process_zero:
+      return
+    # 
+    rank0_print("Running custom callback to prune old trainer states...")
+
+    # 1. Get all checkpoint folders
+    output_dir = args.output_dir
+    checkpoints = sorted(
+        glob.glob(os.path.join(output_dir, "checkpoint-*")),
+        key=lambda x: int(x.split("-")[-1])
+    )
+
+    # 2. Identify all but the most recent checkpoint
+    if len(checkpoints) > 1:
+      checkpoints_to_prune = checkpoints[:-1]
+      rank0_print(
+          f"Found {len(checkpoints_to_prune)} old checkpoints to prune.")
+
+      # Files needed for from_pretrained() - keep these
+      files_to_keep = {
+          "config.json",
+          "generation_config.json", 
+          "preprocessor_config.json",
+          "video_preprocessor_config.json",
+          "tokenizer.json",
+          "tokenizer_config.json",
+          "vocab.json",
+          "merges.txt",
+          "special_tokens_map.json",
+          "added_tokens.json",
+          "chat_template.jinja",
+          "model.safetensors.index.json"
+      }
+      
+      for checkpoint_dir in checkpoints_to_prune:
+        checkpoint_path = Path(checkpoint_dir)
+        rank0_print(f"Pruning checkpoint: {checkpoint_path}")
+        
+        for file_path in checkpoint_path.iterdir():
+          # skip essential files for model loading
+          if file_path.name in files_to_keep:
+            continue
+          if file_path.name.startswith("model-") and file_path.name.endswith(".safetensors"):
+            continue
+          
+          if file_path.is_dir():
+            rank0_print(f"  - Deleting directory: {file_path}")
+            shutil.rmtree(file_path)
+          else:
+            rank0_print(f"  - Deleting file: {file_path}")
+            file_path.unlink()
+            
+      rank0_print("Checkpoint pruning completed.")
+    else:
+      rank0_print("No old checkpoints to prune.")
+
 
 def train(attn_implementation="flash_attention_2"):
   if dist.is_initialized():
@@ -220,6 +283,11 @@ def train(attn_implementation="flash_attention_2"):
   ))
 
   model_args, data_args, training_args, proc_args = parser.parse_args_into_dataclasses()
+  if training_args.lr_scheduler_type == "cosine_with_min_lr" and training_args.min_lr_ratio is not None:
+    if training_args.lr_scheduler_kwargs is None:
+      training_args.lr_scheduler_kwargs = {}
+    training_args.lr_scheduler_kwargs["min_lr"] = training_args.min_lr_ratio * \
+        training_args.learning_rate
 
   processor = transformers.AutoProcessor.from_pretrained(
       model_args.model_name_or_path,
@@ -227,13 +295,19 @@ def train(attn_implementation="flash_attention_2"):
   )
 
   processor = set_processor(processor, proc_args, data_args)
-  
+
   data_module = rank0_make_data_module(
       processor=processor,
       data_args=data_args,
       proc_args=proc_args,
       for_training=True
   )
+  
+  training_args.save_strategy = "steps"
+  effective_batch_size = training_args.per_device_train_batch_size * \
+      training_args.gradient_accumulation_steps * \
+      dist.get_world_size()
+  training_args.save_steps = int(0.1 * len(data_module['train_dataset']) / effective_batch_size)
 
   model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
       model_args.model_name_or_path,
@@ -252,8 +326,10 @@ def train(attn_implementation="flash_attention_2"):
       model=model,
       processing_class=processor,
       args=training_args,
+      callbacks=[PruneOldStateCallback],
       **data_module
   )
+  rank0_print(f"Trainer save_strategy: {trainer.args.save_strategy, trainer.args.save_steps, trainer.args.save_total_limit}")
 
   last_checkpoint = None
   if os.path.isdir(training_args.output_dir):
@@ -263,24 +339,18 @@ def train(attn_implementation="flash_attention_2"):
     rank0_print(
         f"Checkpoint detected. Resuming training from {last_checkpoint}")
   else:
-    rank0_print(f"No checkpoint found at {training_args.output_dir}. Starting training from scratch.")
-  
+    rank0_print(
+        f"No checkpoint found at {training_args.output_dir}. Starting training from scratch.")
+
   trainer.train(resume_from_checkpoint=last_checkpoint)
 
   # When training completes normally without preemption.
   trainer.save_state()
   trainer.save_model(training_args.output_dir)
+  
   if trainer.is_world_process_zero():
     processor.save_pretrained(training_args.output_dir)
-  # Clean up checkpoints to save disk space
-  if trainer.is_world_process_zero():
-    checkpoint_dirs = glob.glob(os.path.join(training_args.output_dir, "checkpoint-*"))
-    for checkpoint_dir in checkpoint_dirs:
-      if os.path.isdir(checkpoint_dir):
-        shutil.rmtree(checkpoint_dir)
-        rank0_print(f"Removed checkpoint directory: {checkpoint_dir}")
-
-
+    
 if __name__ == "__main__":
   torch.set_num_threads(1)
   train(attn_implementation="flash_attention_2")

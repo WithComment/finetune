@@ -278,8 +278,9 @@ def make_prompt(
   If for_training is False, it will return a single string.
   """
   if mode == "cft" or mode == "cpt":
-    text = list()
+    all_prompts = list()
     for convo in conversations:
+      text = list()
       for message in convo:
         text.append(IM_START)
         contents = message['content']
@@ -291,8 +292,9 @@ def make_prompt(
           elif content['type'] == 'video':
             text.append(f"<|vision_start|><|video_pad|><|vision_end|>")
         text.append(IM_END)
-    return ''.join(text)
-
+      all_prompts.append(''.join(text))
+    return all_prompts
+  
   return tokenizer.apply_chat_template(
       conversations, tokenize=False, add_generation_prompt=not for_training
   )

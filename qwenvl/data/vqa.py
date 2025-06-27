@@ -13,26 +13,46 @@ class VQADataset(BenchmarkDataset):
   
   @staticmethod
   def _make_conversation(item, media_dir, mode):
-    conversation = list()
-    restriction_prompt = "Answer straightforwardly and concisely: "
-    conversation.append({
-      'role': 'user',
-      'content': [
-        {
-          'type': 'image',
-          'image': item['image']
-        },
-        {
-          'type': 'text',
-          'text': restriction_prompt
-        },
-        {
-          'type': 'text',
-          'text': item['question']
-        },
-      ]
-    })
+    raise NotImplementedError("VQADataset does not support _make_conversation method. Use make_conversation instead.")
   
+  def make_conversation(self, bin):
+    for item in bin:
+      conversation = list()
+      match self.sys_prompt:
+        case 'default':
+          sys_prompt = "You are a helpful assistant."
+        case 'custom':
+          sys_prompt = ("You are a **question answering** assistant. You task is to **answer the question** based on the provided image. "
+                      "You should **not** provide any additional information or context beyond the image and the question.")
+        case _:
+          sys_prompt = ''
+          
+      conversation.append({
+        'role': 'system',
+        'content': [{
+            'type': 'text',
+            'text': sys_prompt
+          }]
+      })
+      restriction_prompt = "Answer straightforwardly and concisely: "
+      conversation.append({
+        'role': 'user',
+        'content': [
+          {
+            'type': 'image',
+            'image': item['image']
+          },
+          {
+            'type': 'text',
+            'text': restriction_prompt
+          },
+          {
+            'type': 'text',
+            'text': item['question']
+          },
+        ]
+      })
+    
     return conversation
   
   @staticmethod

@@ -14,7 +14,7 @@ import transformers
 from qwenvl.eval import comp_answer_basic, evaluate, yes_no_filter
 
 from .argument import DataArguments, ModelArguments, ProcessingArguments
-from .train import make_data_module, rank0_make_data_module, set_processor
+from .train import make_data_module, rank0_make_data_module, rank0_print, set_processor
 from .utils import get_logger
 from .data import (
     BenchmarkDataset
@@ -179,6 +179,7 @@ def predict(
     proc_args: ProcessingArguments,
 ):
   """Run inference on the benchmark using Qwen2-VL."""
+  
   dist.init_process_group(backend="nccl")
 
   world_size = dist.get_world_size()
@@ -186,11 +187,6 @@ def predict(
   device = f"cuda:{local_rank}"
 
   model, processor, _ = load_pretrained_qwen(model_path, device)
-  data_args.use_cot = '-cot' in model_path
-  if data_args.use_cot:
-    logger.info("Using COT for inference.")
-  else:
-    logger.info("NOT using COT for inference.")
   processor = set_processor(processor, proc_args, data_args)
   data_module = rank0_make_data_module(
       processor=processor,
@@ -205,6 +201,10 @@ def predict(
   collate_fn = data_module['data_collator']
   
   output_dir = eval_dataset.ds_dir.parent.parent / 'results' / data_args.split / Path(model_path).name
+  if data_args.sys_prompt == 'custom':
+    output_dir = output_dir / 'custom_sys_prompt'
+  print(data_args)
+  print(eval_dataset.make_conversation(eval_dataset[0]))
   generate_output(
       model,
       world_size=world_size,

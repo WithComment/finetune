@@ -28,4 +28,4 @@ dataset_use=$1
 requeue=${2:-true}
 
 # Run training with CPT mode
-run_training "$dataset_use" "cft" "$requeue"
+run_training "$dataset_use" "ift" "$requeue"

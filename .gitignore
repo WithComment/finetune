@@ -191,3 +191,5 @@ wandb/
 *.out
 *.err
 *.log
+*.pyc
+*.swp

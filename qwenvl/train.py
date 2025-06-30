@@ -15,9 +15,7 @@
 #    limitations under the License.
 
 from transformers.trainer_utils import get_last_checkpoint
-from transformers import Trainer, TrainerCallback
-import logging
-import signal
+from transformers import Trainer
 import os
 
 import transformers
@@ -25,9 +23,8 @@ import torch
 import torch.distributed as dist
 
 from qwenvl.data.base import BaseDataset
-from qwenvl.data.openbiomedvid import OpenbiomedvidDataset
 
-from .utils import get_logger
+from .utils import PruneOldStateCallback, get_logger, print_trainable_parameters, print_trainable_parameters_visual, rank0_print
 
 from .data import avail_datasets, SFTDataset, BenchmarkDataset
 from .argument import *
@@ -35,20 +32,11 @@ from .argument import *
 from transformers import Trainer, Qwen2_5_VLForConditionalGeneration
 
 from transformers.utils import logging as hf_logging
-import shutil
-import glob
-from pathlib import Path
 
 hf_logging.set_verbosity_error()
 torch.set_num_threads(1)
 
 logger = get_logger(__name__)
-
-
-def rank0_print(msg, lvl="INFO"):
-  lvl = getattr(logging, lvl.upper(), logging.INFO)
-  if dist.get_rank() == 0:
-    logger.log(level=lvl, msg=msg)
 
 
 def set_model(model, model_args):
@@ -61,6 +49,7 @@ def set_model(model, model_args):
     for n, p in model.langauge_model.named_parameters():
       p.requires_grad = False
     model.lm_head.requires_grad = False
+    
   if model_args.tune_mm_vision:
     for n, p in model.visual.named_parameters():
       p.requires_grad = True
@@ -103,13 +92,8 @@ def make_data_module(
 ):
   """Make dataset and collator for training or evaluation."""
   BaseDataset.num_proc = data_args.num_proc
-  ds_name = data_args.dataset_use
+  ds_name = data_args.dataset_use.replace('_', '-')
   ds_class = avail_datasets[ds_name]['ds_class']
-
-  if for_training:
-    assert issubclass(ds_class, SFTDataset)
-  else:
-    assert issubclass(ds_class, BenchmarkDataset)
 
   ds = ds_class(
       name=ds_name,
@@ -140,140 +124,21 @@ def rank0_make_data_module(*args, **kwargs):
   return data_module
 
 
-def print_trainable_parameters_visual(model) -> None:
-  """
-  Prints the trainable status of all vision components including attention blocks and merger module.
-  Outputs the indices of trainable/non-trainable blocks and the merger module status.
-  """
-  trainable_blocks = []
-  non_trainable_blocks = []
-
-  # Check trainable status of vision attention blocks
-  for block_idx, block in enumerate(model.blocks):
-    is_trainable = all(param.requires_grad for param in block.parameters())
-    if is_trainable:
-      trainable_blocks.append(block_idx)
-    else:
-      non_trainable_blocks.append(block_idx)
-
-  # Check trainable status of merger module
-  is_merger_trainable = any(
-      param.requires_grad for param in model.merger.parameters())
-
-  # Print results
-  print("Vision Module - Attention Blocks:")
-  print(
-      f"Trainable Block Indices: {trainable_blocks if trainable_blocks else 'None'}"
-  )
-  print(
-      f"Non-Trainable Block Indices: {non_trainable_blocks if non_trainable_blocks else 'None'}"
-  )
-  print(f"Merger Module Trainable: {is_merger_trainable}")
-
-
-def print_trainable_parameters(model) -> None:
-  """
-  Prints the trainable status of all LLM components including embeddings, layers, and normalization.
-  Outputs the indices of trainable/non-trainable layers and other module statuses.
-  """
-  # Check embed_tokens
-  model = model.language_model
-  is_embed_trainable = any(
-      param.requires_grad for param in model.embed_tokens.parameters()
-  )
-  print(f"LLM Module - Embed Tokens Trainable: {is_embed_trainable}")
-
-  # Check each decoder layer
-  trainable_layers = []
-  non_trainable_layers = []
-
-  for layer_idx, layer in enumerate(model.layers):
-    is_trainable = any(param.requires_grad for param in layer.parameters())
-    if is_trainable:
-      trainable_layers.append(layer_idx)
-    else:
-      non_trainable_layers.append(layer_idx)
-
-  # Print layer status
-  print(
-      f"LLM Module - Trainable Layer Indices: {trainable_layers if trainable_layers else 'None'}"
-  )
-  print(
-      f"LLM Module - Non-Trainable Layer Indices: {non_trainable_layers if non_trainable_layers else 'None'}"
-  )
-
-
-class PruneOldStateCallback(TrainerCallback):
-  """
-  A custom callback to delete optimizer, scheduler, and trainer state
-  from older checkpoints, keeping only the model weights.
-  """
-
-  def on_save(self, args: TrainingArguments, state, control, **kwargs):
-    # This event is triggered after a checkpoint is saved.
-    if not state.is_world_process_zero:
-      return
-    # 
-    rank0_print("Running custom callback to prune old trainer states...")
-
-    # 1. Get all checkpoint folders
-    output_dir = args.output_dir
-    checkpoints = sorted(
-        glob.glob(os.path.join(output_dir, "checkpoint-*")),
-        key=lambda x: int(x.split("-")[-1])
-    )
-
-    # 2. Identify all but the most recent checkpoint
-    if len(checkpoints) > 1:
-      checkpoints_to_prune = checkpoints[:-1]
-      rank0_print(
-          f"Found {len(checkpoints_to_prune)} old checkpoints to prune.")
-
-      # Files needed for from_pretrained() - keep these
-      files_to_keep = {
-          "config.json",
-          "generation_config.json", 
-          "preprocessor_config.json",
-          "video_preprocessor_config.json",
-          "tokenizer.json",
-          "tokenizer_config.json",
-          "vocab.json",
-          "merges.txt",
-          "special_tokens_map.json",
-          "added_tokens.json",
-          "chat_template.jinja",
-          "model.safetensors.index.json"
-      }
-      
-      for checkpoint_dir in checkpoints_to_prune:
-        checkpoint_path = Path(checkpoint_dir)
-        rank0_print(f"Pruning checkpoint: {checkpoint_path}")
-        
-        for file_path in checkpoint_path.iterdir():
-          # skip essential files for model loading
-          if file_path.name in files_to_keep:
-            continue
-          if file_path.name.startswith("model-") and file_path.name.endswith(".safetensors"):
-            continue
-          
-          if file_path.is_dir():
-            rank0_print(f"  - Deleting directory: {file_path}")
-            shutil.rmtree(file_path)
-          else:
-            rank0_print(f"  - Deleting file: {file_path}")
-            file_path.unlink()
-            
-      rank0_print("Checkpoint pruning completed.")
-    else:
-      rank0_print("No old checkpoints to prune.")
+def set_min_lr(training_args: TrainingArguments):
+  """Set minimum learning rate if specified."""
+  if training_args.lr_scheduler_type == "cosine_with_min_lr" and training_args.min_lr_ratio is not None:
+    if training_args.lr_scheduler_kwargs is None:
+      training_args.lr_scheduler_kwargs = {}
+    training_args.lr_scheduler_kwargs["min_lr"] = training_args.min_lr_ratio * \
+        training_args.learning_rate
+  return training_args
 
 
 def train(attn_implementation="flash_attention_2"):
   if dist.is_initialized():
     rank = dist.get_rank()
     world_size = dist.get_world_size()
-    rank0_print(
-        f"Hello from Slurm! Rank {rank}/{world_size}")
+    logger.info(f"Hello from Slurm! Rank {rank}/{world_size}")
 
   parser = transformers.HfArgumentParser((
       ModelArguments,
@@ -283,11 +148,7 @@ def train(attn_implementation="flash_attention_2"):
   ))
 
   model_args, data_args, training_args, proc_args = parser.parse_args_into_dataclasses()
-  if training_args.lr_scheduler_type == "cosine_with_min_lr" and training_args.min_lr_ratio is not None:
-    if training_args.lr_scheduler_kwargs is None:
-      training_args.lr_scheduler_kwargs = {}
-    training_args.lr_scheduler_kwargs["min_lr"] = training_args.min_lr_ratio * \
-        training_args.learning_rate
+  training_args = set_min_lr(training_args)
 
   processor = transformers.AutoProcessor.from_pretrained(
       model_args.model_name_or_path,
@@ -302,12 +163,6 @@ def train(attn_implementation="flash_attention_2"):
       proc_args=proc_args,
       for_training=True
   )
-  
-  training_args.save_strategy = "steps"
-  effective_batch_size = training_args.per_device_train_batch_size * \
-      training_args.gradient_accumulation_steps * \
-      dist.get_world_size()
-  training_args.save_steps = int(0.1 * len(data_module['train_dataset']) / effective_batch_size)
 
   model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
       model_args.model_name_or_path,
@@ -315,9 +170,8 @@ def train(attn_implementation="flash_attention_2"):
       torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
   )
   model = set_model(model, model_args)
-  if dist.get_rank() == 0:
-    print_trainable_parameters_visual(model.visual)
-    print_trainable_parameters(model.model)
+  print_trainable_parameters_visual(model.visual)
+  print_trainable_parameters(model.model)
 
   if training_args.gradient_checkpointing:
     model.enable_input_require_grads()
@@ -342,15 +196,9 @@ def train(attn_implementation="flash_attention_2"):
     rank0_print(
         f"No checkpoint found at {training_args.output_dir}. Starting training from scratch.")
 
+  # Trainer will always save final model https://huggingface.co/docs/transformers/v4.52.3/en/main_classes/trainer#transformers.TrainingArguments.save_strategy
   trainer.train(resume_from_checkpoint=last_checkpoint)
 
-  # When training completes normally without preemption.
-  trainer.save_state()
-  trainer.save_model(training_args.output_dir)
-  
-  if trainer.is_world_process_zero():
-    processor.save_pretrained(training_args.output_dir)
-    
 if __name__ == "__main__":
   torch.set_num_threads(1)
   train(attn_implementation="flash_attention_2")

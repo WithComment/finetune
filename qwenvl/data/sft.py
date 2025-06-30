@@ -1,6 +1,7 @@
 import json
 import os
 import random
+import shutil
 from typing import Callable
 import datasets
 from transformers import AutoTokenizer, Qwen2_5_VLProcessor
@@ -115,9 +116,7 @@ class SFTDataset(BaseDataset):
         texts, images, videos = get_content_fn(item)
 
         num_tokens = 0
-        for text in texts:
-          num_tokens += len(processor.tokenizer.encode(text))
-
+        
         for img in images:
           img = get_image(img)
           h, w, h_tokens, w_tokens = smart_resize(

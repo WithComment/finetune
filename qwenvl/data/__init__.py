@@ -37,7 +37,7 @@ avail_datasets = {
     "ds_dir": "/projects/cft_vlm/datasets/surgeryvid/data/dataset",
     "media_dir": "/projects/cft_vlm/datasets/surgeryvid/data/vid_processed",
     "ds_class": SurgeryVidDataset,
-    "ds_key": "connectthapa84/SurgeryVideoQA"
+    "ds_key": "withcomment/surgeryvid"
   },
   "open-pmc": {
     "ds_dir": "/projects/cft_vlm/datasets/open_pmc/data/dataset",
@@ -59,8 +59,8 @@ avail_datasets = {
   },
   "openbiomedvid": {
     "ds_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/dataset",
-    "media_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/vid_1fps",
+    "media_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/vid_processed",
     "ds_class": OpenbiomedvidDataset,
-    "ds_key": "connectthapa84/OpenBiomedVid"
+    "ds_key": "withcomment/openbiomedvid"
   }
 }

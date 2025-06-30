@@ -4,7 +4,7 @@ import json
 import time
 from typing import Callable
 from tqdm import tqdm
-from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+from transformers import AutoProcessor, AutoModel, Qwen2VLForConditionalGeneration, Qwen2_5_VLForConditionalGeneration
 from transformers.trainer_utils import get_last_checkpoint
 import logging
 import torch
@@ -36,15 +36,25 @@ def log_header(
 def _load_model_and_processor(
     model_path: str,
     device: str,
-) -> tuple[Qwen2_5_VLForConditionalGeneration, AutoProcessor]:
+) -> tuple[AutoModel, AutoProcessor]:
   """Load the Qwen model and processor."""
   logger.info(f"Loading model from {model_path} on device {device}")
-  model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-      model_path,
-      device_map={"": device},
-      torch_dtype=torch.float16,
-      attn_implementation="flash_attention_2"
-  )
+  if 'Qwen2-VL' in model_path:
+    model = Qwen2VLForConditionalGeneration.from_pretrained(
+        model_path,
+        device_map={"": device},
+        torch_dtype=torch.float16,
+        attn_implementation="flash_attention_2"
+    )
+  elif 'Qwen2.5-VL' in model_path:
+    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+        model_path,
+        device_map={"": device},
+        torch_dtype=torch.float16,
+        attn_implementation="flash_attention_2"
+    )
+  else:
+    raise ValueError(f"Unsupported model type: {model_path}")
   processor = AutoProcessor.from_pretrained(model_path)
   return model, processor
 
@@ -146,7 +156,7 @@ def gather_result(
 
 
 def generate_output(
-    model: Qwen2_5_VLForConditionalGeneration,
+    model: AutoModel,
     world_size: int,
     local_rank: int,
     output_dir: Path,
@@ -186,7 +196,7 @@ def predict(
   local_rank = dist.get_rank()
   device = f"cuda:{local_rank}"
 
-  model, processor, _ = load_pretrained_qwen(model_path, device)
+  model, processor, model_path = load_pretrained_qwen(model_path, device)
   processor = set_processor(processor, proc_args, data_args)
   data_module = rank0_make_data_module(
       processor=processor,
@@ -200,11 +210,15 @@ def predict(
   eval_dataset = data_module['eval_dataset']
   collate_fn = data_module['data_collator']
   
-  output_dir = eval_dataset.ds_dir.parent.parent / 'results' / data_args.split / Path(model_path).name
+  if model_path.name.startswith('checkpoint-'):
+    checkpoint_name = '-'.join([model_path.parts[-2], model_path.name.split('-')[-1]])
+  else:
+    checkpoint_name = model_path.name
+  output_dir = eval_dataset.ds_dir.parent.parent / 'results' / data_args.split / checkpoint_name
+  logger.info(f"Output directory: {output_dir}")
   if data_args.sys_prompt == 'custom':
     output_dir = output_dir / 'custom_sys_prompt'
-  print(data_args)
-  print(eval_dataset.make_conversation(eval_dataset[0]))
+  rank0_print(data_args)
   generate_output(
       model,
       world_size=world_size,

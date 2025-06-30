@@ -77,13 +77,15 @@ get_base_train_args() {
     --eval_strategy no \
     --lr_scheduler_type cosine_with_min_lr \
     --min_lr_ratio 0.1 \
+    --save_strategy steps \
+    --save_steps 0.1 \
     --learning_rate 1e-5 \
     --weight_decay 0.01 \
     --warmup_ratio 0.01 \
     --max_grad_norm 1 \
     --logging_steps 1 \
     --gradient_checkpointing True \
-    --dataloader_num_workers 1 \
+    --dataloader_num_workers 4 \
     --run_name ${run_name} \
     --report_to wandb"
 }

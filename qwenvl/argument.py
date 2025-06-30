@@ -21,7 +21,7 @@ class DataArguments:
   data_packing: bool = field(default=True)
   split: str = field(default="train")
   mode: str = field(default="ift", metadata={"help": "Training mode: 'cft', 'cpt', or 'ift'"})
-  model_max_length: int = field(default=3072)
+  model_max_length: int = field(default=16384)
   num_proc: int = field(default=32)
   portion: float = field(default=1.0)
   force: bool = field(default=False)
@@ -49,7 +49,7 @@ class ProcessingArguments:
 
   video_min_pixels: int = field(default=PATCH_SIZE * 64)
   video_max_pixels: int = field(default=PATCH_SIZE * 512)
-  video_max_frames: int = field(default=30)
+  video_max_frames: int = field(default=420)
   video_min_frames: int = field(default=4)
   base_interval: int = field(default=1)
 

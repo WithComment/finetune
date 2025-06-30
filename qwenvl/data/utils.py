@@ -19,11 +19,19 @@ from io import BytesIO
 
 from ..argument import ProcessingArguments
 
+from ..utils import get_logger
+
+logger = get_logger(__name__)
+
 PLACEHOLDER_IDS = {151654, 151655, 151656}
 torch.set_num_threads(1)
 
 IM_START = "<|im_start|>"
 IM_END = "<|im_end|>"
+VISION_START = "<|vision_start|>"
+VISION_END = "<|vision_end|>"
+VIDEO_PAD = "<|video_pad|>"
+IMAGE_PAD = "<|image_pad|>"
 
 
 def make_cot(subtitle_file: Path):
@@ -43,71 +51,32 @@ def filter_cot(item: dict, subtitle_dir: Path) -> bool:
   return cot.exists()
 
 
-def _process_video_with_decord(
+def get_vid_frames_opencv(
     video_path: str,
-    vid_proc_args: ProcessingArguments
-) -> tuple[np.ndarray, float]:
-
-  vr = VideoReader(video_path)
-  total_frames = len(vr)
-  avg_fps = vr.get_avg_fps()
-
-  base_interval = vid_proc_args.base_interval
-  min_frames = vid_proc_args.video_min_frames
-  max_frames = vid_proc_args.video_max_frames
-
-  if not (base_interval and min_frames and max_frames):
-    return vr.get_batch(range(total_frames)).asnumpy(), avg_fps
-
-  video_length = total_frames / avg_fps
-  num_frames_to_sample = round(video_length / base_interval)
-
-  target_frames = min(
-      max(num_frames_to_sample, min_frames), max_frames
-  )
-
-  frame_idx = np.linspace(0, total_frames - 1, target_frames, dtype=int)
-  video = torch.tensor(vr.get_batch(frame_idx).asnumpy()).permute(0, 3, 1, 2)
-  return video, target_frames / video_length
-
-
-def _process_video_with_opencv(
-    video_path: str,
-    vid_proc_args: ProcessingArguments
+    vid_proc_args: ProcessingArguments,
+    all_frames: bool,
 ) -> tuple[np.ndarray, float]:
   """
   Processes video using OpenCV. Raises an exception on failure.
   """
   cap = cv2.VideoCapture(video_path)
-  if not cap.isOpened():
-    raise IOError("Cannot open video file with OpenCV")
-
+  
   total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
   avg_fps = cap.get(cv2.CAP_PROP_FPS)
 
   if total_frames == 0 or avg_fps == 0:
     cap.release()
     raise ValueError("Video file has zero frames or zero FPS with OpenCV.")
-
-  # If arguments for sampling are not provided, return all frames
-  if not all([vid_proc_args.base_interval, vid_proc_args.video_min_frames, vid_proc_args.video_max_frames]):
-    frames = []
-    while True:
-      ret, frame = cap.read()
-      if not ret:
-        break
-      frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-    cap.release()
-    if not frames:
-      raise ValueError("Could not extract any frames using OpenCV.")
-    return np.stack(frames), avg_fps
-
+  
   video_length = total_frames / avg_fps
-  num_frames_to_sample = round(video_length / vid_proc_args.base_interval)
-  target_frames = min(
-      max(num_frames_to_sample, vid_proc_args.video_min_frames),
-      vid_proc_args.video_max_frames
-  )
+  if all_frames:
+    target_frames = total_frames
+  else:
+    num_frames_to_sample = round(video_length / vid_proc_args.base_interval)
+    target_frames = min(
+        max(num_frames_to_sample, vid_proc_args.video_min_frames),
+        vid_proc_args.video_max_frames
+    )
 
   frame_idx = np.linspace(0, total_frames - 1, target_frames, dtype=int)
 
@@ -137,8 +106,9 @@ def get_video_frames(
 
   It first tries using OpenCV for speed and falls back to PyAV for robustness.
   """
+  all_frames = video_file_path.parent.name == 'vid_processed'
   video_str_path = str(video_file_path)
-  return _process_video_with_opencv(video_str_path, vid_proc_args)
+  return get_vid_frames_opencv(video_str_path, vid_proc_args, all_frames)
 
 
 def get_image(image) -> Image.Image:
@@ -223,7 +193,6 @@ def make_labels_chat(
     assistant_end: str = "<|im_end|>"
 ) -> torch.Tensor:
 
-  ignore_idx = -100
   assistant_start = "<|im_start|>assistant\n"
   assistant_end = "<|im_end|>"
   labels = torch.ones_like(input_ids) * ignore_idx
@@ -243,13 +212,13 @@ def make_labels_chat(
 
 
 def get_batch_images_and_videos(
-    conversations,
+    batch,
     vid_proc_args,
 ) -> tuple[list[str], list[str]]:
   images = list()
   videos = list()
   fpss = list()
-  for conversation in conversations:
+  for conversation in batch:
     imgs, vids, fps = get_images_and_videos(
         conversation, vid_proc_args
     )
@@ -267,7 +236,7 @@ def get_batch_images_and_videos(
 
 
 def make_prompt(
-    conversations: list[list[dict]],
+    batch: list[list[list[dict]]],
     tokenizer: PreTrainedTokenizer,
     for_training: bool,
     mode: str,
@@ -279,50 +248,71 @@ def make_prompt(
   """
   if mode == "cft" or mode == "cpt":
     all_prompts = list()
-    for convo in conversations:
+    for _bin in batch:
       text = list()
-      for message in convo:
+      for convo in _bin:
         text.append(IM_START)
-        contents = message['content']
-        for content in contents:
-          if content['type'] == 'text':
-            text.append(content['text'])
-          elif content['type'] == 'image':
-            text.append(f"<|vision_start|><|image_pad|><|vision_end|>")
-          elif content['type'] == 'video':
-            text.append(f"<|vision_start|><|video_pad|><|vision_end|>")
+        for message in convo:
+          contents = message['content']
+          for content in contents:
+            if content['type'] == 'text':
+              text.append(content['text'])
+            elif content['type'] == 'image':
+              text.append(f"<|vision_start|><|image_pad|><|vision_end|>")
+            elif content['type'] == 'video':
+              text.append(f"<|vision_start|><|video_pad|><|vision_end|>")
         text.append(IM_END)
       all_prompts.append(''.join(text))
     return all_prompts
   
-  return tokenizer.apply_chat_template(
-      conversations, tokenize=False, add_generation_prompt=not for_training
-  )
 
 
 def make_model_input(
-    conversations: list[list[dict]],
+    batch: list[list[list[dict]]],
     processor: Qwen2_5_VLProcessor,
     proc_args: ProcessingArguments,
     for_training: bool,
     mode: str,
 ):
   """
-  Conversation is a list of dictionaries which contains multiple messages.
+  Do not ask me why this is so complicated and nested and stuff.
+  DO NOT TOUCH unless you want to spend hours debugging.
+  AND YES, THIS IS TO YOU XIAOWEN.
+  
+  A batch `list` contains many bins `list`.
+  A bin contains many conversations `list`.
+  A conversation contains many messages `dict`.
+  A message contains a role and content `list`.
+  A content contains many items `dict` with type and text/image/video.
+  
+  The reason behind wrapping bins in a list is so that we know where to
+  add start and end tokens for CPT and CFT.
   """
-  if isinstance(conversations[0], dict):
+  if isinstance(batch[0][0], dict):
     # Make it a batch.
-    conversations = [conversations]
+    batch = [batch]
 
+  flat_batch = list()
+  for _bin in batch:
+    flat_bin = list()
+    for conversation in _bin:
+      flat_bin.extend(conversation)
+    flat_batch.append(flat_bin)
+    
+  if mode == 'ift':
+    text = processor.tokenizer.apply_chat_template(
+        flat_batch, tokenize=False, add_generation_prompt=not for_training
+    )
+  else:
+    text = make_prompt(
+        batch,
+        processor.tokenizer,
+        for_training=for_training,
+        mode=mode
+    )
+  
   image_inputs, video_inputs, fpss = get_batch_images_and_videos(
-      conversations, proc_args)
-
-  text = make_prompt(
-      conversations,
-      processor.tokenizer,
-      for_training=for_training,
-      mode=mode
-  )
+      flat_batch, proc_args)
   data_dict = processor(
       text=text,
       images=image_inputs if image_inputs else None,

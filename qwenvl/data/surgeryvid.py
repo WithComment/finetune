@@ -36,58 +36,46 @@ class SurgeryVidDataset(BenchmarkDataset):
 
   @staticmethod
   def _make_conversation(item, subtitle_dir, media_dir, use_cot):
-    conversation = list()
-    cot = None
-    
-    system_prompt = '''
-    You are an experienced surgeon.
-    '''
-
-    conversation.append({
+    raise NotImplementedError()
+  
+  def make_conversation(self, bin):
+    for item in bin:
+      conversation = list()
+      match self.sys_prompt:
+        case 'default':
+          sys_prompt = "You are a helpful assistant."
+        case 'custom':
+          sys_prompt = ("You are a **question answering** assistant. You task is to **answer the question** based on the provided vision input. "
+                      "You should **not** provide any additional information or context beyond the vision input and the question.")
+        case _:
+          sys_prompt = ''
+          
+      conversation.append({
         'role': 'system',
-        'content': system_prompt
-    })
-
-    if use_cot:
-      cot = subtitle_dir / item['video'].replace('.mp4', '.en.vtt')
-      if not cot.exists():
-        logger.warning(f"Subtitle file {cot} does not exist, skipping COT.")
-        cot = None
-      else:
-        cot = make_cot(cot)
-    restriction_prompt = '''
-    1. Answer the question directly and factually.
-    2. Your entire response must be 10 words or less.
-    3. Use ONLY phrases or keywords.
-    4. Do NOT add any introductory or concluding text.
-    '''
-    conversation.append({
+        'content': [{
+            'type': 'text',
+            'text': sys_prompt
+          }]
+      })
+      restriction_prompt = "Answer straightforwardly and concisely: "
+      conversation.append({
         'role': 'user',
         'content': [
-            {
-                'type': 'video',
-                'video': str(media_dir / item['video'])
-            },
-            {
-                'type': 'text',
-                'text': item['question']
-            },
-            {
-                'type': 'text',
-                'text': restriction_prompt
-            }
+          {
+            'type': 'video',
+            'video': self.media_dir / item['video']
+          },
+          {
+            'type': 'text',
+            'text': restriction_prompt
+          },
+          {
+            'type': 'text',
+            'text': item['question']
+          },
         ]
-    })
-    if cot:
-      conversation.append({
-          'role': 'assistant',
-          'content': [
-              {
-                  'type': 'text',
-                  'text': cot
-              }
-          ]
       })
+    
     return conversation
 
   @staticmethod

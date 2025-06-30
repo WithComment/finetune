@@ -29,7 +29,7 @@ if __name__ == "__main__":
     help="List of model names to use for predictions."
   )
   parser.add_argument(
-    '--ignore_errors', action='store_true',
+    '--ignore_errors', action='store_true', default=False,
     help="Ignore errors during the execution of the command."
   )
   parser.add_argument(

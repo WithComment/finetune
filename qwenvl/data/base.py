@@ -207,7 +207,7 @@ class BaseDataset(Dataset, ABC):
   
   def make_model_input(self, batch_convo: list[dict]) -> tuple[dict, str]:
     return make_model_input(
-      conversations=batch_convo,
+      batch=batch_convo,
       processor=self.processor,
       proc_args=self.proc_args,
       for_training=self.for_training,

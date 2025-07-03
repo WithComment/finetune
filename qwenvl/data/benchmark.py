@@ -11,3 +11,4 @@ from . import BaseDataset
 class BenchmarkDataset(BaseDataset):
   
   for_training: bool = False
+  packed: bool = False

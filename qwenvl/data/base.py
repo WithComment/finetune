@@ -24,8 +24,9 @@ from torch.utils.data import Dataset
 from transformers import Qwen2_5_VLProcessor
 from abc import ABC, abstractmethod
 
+from qwenvl.data.input_processor import InputProcessor
+
 from ..argument import DataArguments, ProcessingArguments
-from .utils import make_model_input
 from ..utils import get_logger
 logger = get_logger(__name__)
 
@@ -42,7 +43,7 @@ class BaseDataset(Dataset, ABC):
   media_dir: Path | None
   ds_key: str
   mode: str
-  processor: Qwen2_5_VLProcessor
+  processor: InputProcessor
   proc_args: ProcessingArguments
   for_training: bool
   num_proc: int = 24
@@ -50,7 +51,7 @@ class BaseDataset(Dataset, ABC):
   def __init__(
       self,
       name: str,
-      processor: Qwen2_5_VLProcessor,
+      processor: InputProcessor,
       proc_args: ProcessingArguments,
       data_args: DataArguments,
   ) -> None:
@@ -66,6 +67,7 @@ class BaseDataset(Dataset, ABC):
     self.mode = data_args.mode
     self.split = data_args.split
     self.sys_prompt = data_args.sys_prompt
+    self.packed = data_args.data_packing
     
     # Validate mode
     if self.mode not in ["cft", "cpt", "ift"]:
@@ -171,6 +173,9 @@ class BaseDataset(Dataset, ABC):
     raise NotImplementedError()
   
 
+  def make_prompt(self, item):
+    return self.processor.make_prompt(self.make_conversation([item]))
+
   def make_conversation(
       self,
       bin: list[dict],
@@ -206,12 +211,9 @@ class BaseDataset(Dataset, ABC):
     
   
   def make_model_input(self, batch_convo: list[dict]) -> tuple[dict, str]:
-    return make_model_input(
-      batch=batch_convo,
-      processor=self.processor,
-      proc_args=self.proc_args,
-      for_training=self.for_training,
-      mode=self.mode
+    return self.processor(
+      conversations=batch_convo,
+      packed=self.packed,
     )
 
 
@@ -219,13 +221,13 @@ class BaseDataset(Dataset, ABC):
     """
     Transform a list of rows of the dataset into a dictionary suitable for model input.
     Including input_ids, attention_mask, image_pixel_values, etc.
-    """
+    """    
     if not isinstance(batch[0], list):
       batch = [batch]
     batch_convo = list()
     for pack in batch:
       batch_convo.append(self.make_conversation(pack))
-    return self.make_model_input(batch_convo)[0]
+    return self.make_model_input(batch_convo)
 
 
   def __len__(self):
@@ -235,10 +237,6 @@ class BaseDataset(Dataset, ABC):
   @property
   def n_samples(self) -> int:
     return len(self.ds)
-  
-  @property
-  def packed(self) -> bool:
-    return isinstance(self.bins[0], list)
   
   def _get_bin(self, idx: int) -> list[dict]:
     return [self.ds[i] for i in self.bins[idx]]

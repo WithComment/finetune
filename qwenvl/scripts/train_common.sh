@@ -57,7 +57,7 @@ get_data_args() {
     --data_packing True \
     --mode ${mode} \
     --split train \
-    --model_max_length 16384 \
+    --model_max_length 8192 \
     --num_proc 24 \
     --force False"
 }
@@ -78,7 +78,7 @@ get_base_train_args() {
     --lr_scheduler_type cosine_with_min_lr \
     --min_lr_ratio 0.1 \
     --save_strategy steps \
-    --save_steps 0.1 \
+    --save_steps 0.2 \
     --learning_rate 1e-5 \
     --weight_decay 0.01 \
     --warmup_ratio 0.01 \
@@ -94,9 +94,9 @@ get_base_train_args() {
 run_training() {
     local dataset_use=$1
     local mode=$2
-    local requeue=${3:-true}
-    
-    local base_model="Qwen/Qwen2.5-VL-3B-Instruct"
+    local requeue=$3
+    local base_model=$4
+
     local run_name="${base_model}-${dataset_use}-${mode}"
     local output_dir="/projects/cft_vlm/.checkpoint/${run_name}"
     
@@ -150,5 +150,6 @@ setup_environment
 dataset_use=$1
 mode=${2}
 requeue=${3:-true}
+base_model=${4:-"Qwen/Qwen2.5-VL-3B-Instruct"}
 
-run_training "$dataset_use" "$mode" "$requeue"
+run_training "$dataset_use" "$mode" "$requeue" "$base_model"

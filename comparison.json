@@ -1,0 +1,1337 @@
+{
+  "requesterUsername": "WithComment",
+  "requesterAvatarIconUri": {
+    "$mid": 1,
+    "path": "/u/101920201",
+    "scheme": "https",
+    "authority": "avatars.githubusercontent.com",
+    "query": "v=4"
+  },
+  "responderUsername": "GitHub Copilot",
+  "responderAvatarIconUri": {
+    "id": "copilot"
+  },
+  "initialLocation": "panel",
+  "requests": [
+    {
+      "requestId": "request_47c1f5cd-8a67-4eeb-b5a5-f908746b1f93",
+      "message": {
+        "parts": [
+          {
+            "range": {
+              "start": 0,
+              "endExclusive": 10
+            },
+            "editorRange": {
+              "startLineNumber": 1,
+              "startColumn": 1,
+              "endLineNumber": 1,
+              "endColumn": 11
+            },
+            "agent": {
+              "extensionId": {
+                "value": "GitHub.copilot-chat",
+                "_lower": "github.copilot-chat"
+              },
+              "publisherDisplayName": "GitHub",
+              "extensionPublisherId": "GitHub",
+              "extensionDisplayName": "GitHub Copilot Chat",
+              "id": "github.copilot.workspace",
+              "description": "Ask about your workspace",
+              "metadata": {
+                "sampleRequest": "How do I build this project?",
+                "themeIcon": {
+                  "id": "code"
+                },
+                "hasFollowups": true,
+                "isSecondary": true,
+                "supportIssueReporting": false
+              },
+              "name": "workspace",
+              "fullName": "Workspace",
+              "locations": [
+                "panel"
+              ],
+              "slashCommands": [
+                {
+                  "name": "explain",
+                  "description": "Explain how the code in your active editor works"
+                },
+                {
+                  "name": "tests",
+                  "description": "Generate unit tests for the selected code",
+                  "disambiguation": [
+                    {
+                      "category": "create_tests",
+                      "description": "The user wants to generate unit tests.",
+                      "examples": [
+                        "Generate tests for my selection using pytest."
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "fix",
+                  "description": "Propose a fix for the problems in the selected code",
+                  "sampleRequest": "There is a problem in this code. Rewrite the code to show it with the bug fixed."
+                },
+                {
+                  "name": "new",
+                  "description": "Scaffold code for a new file or project in a workspace",
+                  "sampleRequest": "Create a RESTful API server using typescript",
+                  "isSticky": true,
+                  "disambiguation": [
+                    {
+                      "category": "create_new_workspace_or_extension",
+                      "description": "The user wants to create a complete Visual Studio Code workspace from scratch, such as a new application or a Visual Studio Code extension. Use this category only if the question relates to generating or creating new workspaces in Visual Studio Code. Do not use this category for updating existing code or generating sample code snippets",
+                      "examples": [
+                        "Scaffold a Node server.",
+                        "Create a sample project which uses the fileSystemProvider API.",
+                        "react application"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "newNotebook",
+                  "description": "Create a new Jupyter Notebook",
+                  "sampleRequest": "How do I create a notebook to load data from a csv file?",
+                  "disambiguation": [
+                    {
+                      "category": "create_jupyter_notebook",
+                      "description": "The user wants to create a new Jupyter notebook in Visual Studio Code.",
+                      "examples": [
+                        "Create a notebook to analyze this CSV file."
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "fixTestFailure",
+                  "description": "Propose a fix for the failing test",
+                  "when": "config.github.copilot.chat.fixTestFailure.enabled"
+                },
+                {
+                  "name": "setupTests",
+                  "description": "Set up tests in your project (Experimental)",
+                  "sampleRequest": "add playwright tests to my project",
+                  "when": "config.github.copilot.chat.setupTests.enabled",
+                  "disambiguation": [
+                    {
+                      "category": "set_up_tests",
+                      "description": "The user wants to configure project test setup, framework, or test runner. The user does not want to fix their existing tests.",
+                      "examples": [
+                        "Set up tests for this project."
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "disambiguation": [
+                {
+                  "category": "workspace_project_questions",
+                  "description": "The user wants to learn about or update the code or files in their current workspace. Questions in this category may be about understanding what the whole workspace does or locating the implementation of some code. This does not include generating or updating tests.",
+                  "examples": [
+                    "What does this project do?"
+                  ]
+                },
+                {
+                  "category": "find_code_in_workspace",
+                  "description": "The user wants to locate the implementation of some functionality in their current workspace.",
+                  "examples": [
+                    "Where is the tree widget implemented?"
+                  ]
+                },
+                {
+                  "category": "generate_with_workspace_context",
+                  "description": "The user wants to generate code based on multiple files in the workspace and did not specify which files to reference.",
+                  "examples": [
+                    "Create a README for this project."
+                  ]
+                }
+              ]
+            },
+            "kind": "agent"
+          },
+          {
+            "range": {
+              "start": 10,
+              "endExclusive": 474
+            },
+            "editorRange": {
+              "startLineNumber": 1,
+              "startColumn": 11,
+              "endLineNumber": 1,
+              "endColumn": 475
+            },
+            "text": " You see to make labels for supervised finetuning I currently have two strategies. The make_labels and make_labels_chat functions in utils.py, and the make_labels_new function in the prototyping.ipynb cell 4. I would like you to carefully examine the code, analyze the purpose of each function and code block. Compare and contrast the two different approaches. Give an impartial judgement as to which one is more readable, less error prone, and easier to maintain.",
+            "kind": "text"
+          }
+        ],
+        "text": "@workspace You see to make labels for supervised finetuning I currently have two strategies. The make_labels and make_labels_chat functions in utils.py, and the make_labels_new function in the prototyping.ipynb cell 4. I would like you to carefully examine the code, analyze the purpose of each function and code block. Compare and contrast the two different approaches. Give an impartial judgement as to which one is more readable, less error prone, and easier to maintain."
+      },
+      "variableData": {
+        "variables": [
+          {
+            "id": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+            "value": {
+              "$mid": 1,
+              "fsPath": "\\projects\\cft_vlm\\finetune\\qwenvl\\data\\utils.py",
+              "_sep": 1,
+              "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+              "path": "/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+              "scheme": "vscode-remote",
+              "authority": "tunnel+gpu087"
+            },
+            "name": "utils.py",
+            "isFile": true,
+            "isOmitted": false
+          },
+          {
+            "id": "vscode.implicit.file",
+            "name": "file:prototyping.ipynb",
+            "value": {
+              "$mid": 1,
+              "external": "vscode-notebook-cell://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb#W3sdnNjb2RlLXJlbW90ZQ%3D%3D",
+              "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+              "scheme": "vscode-notebook-cell",
+              "authority": "tunnel+gpu087",
+              "fragment": "W3sdnNjb2RlLXJlbW90ZQ=="
+            },
+            "isFile": true,
+            "modelDescription": "User's active file"
+          }
+        ]
+      },
+      "response": [
+        {
+          "content": {
+            "value": "Collecting workspace information",
+            "uris": {}
+          },
+          "kind": "progressTask",
+          "deferred": {
+            "p": {},
+            "d": {
+              "outcome": 0
+            }
+          },
+          "a": {
+            "z": 0,
+            "g": {
+              "threshold": 175,
+              "name": "6be8c",
+              "h": 0
+            }
+          },
+          "progress": []
+        },
+        {
+          "value": "Here is a comparison of the two approaches for creating labels for supervised fine-tuning.\n\n### Summary\n\nThe two approaches achieve the same goal of creating labels for model training by masking out user/system prompts and only calculating loss on the assistant's responses. However, they do so with fundamentally different strategies.\n\n*   **Approach 1 (",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          }
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "make_labels",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 173,
+                "startColumn": 5,
+                "endLineNumber": 173,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "path": "/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "scheme": "vscode-remote",
+                "authority": "tunnel+gpu087"
+              }
+            }
+          },
+          "resolveId": "9bedd0b1-b4c4-4715-89d6-9f8e2f8e56db"
+        },
+        {
+          "value": "/",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          },
+          "uris": {}
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "make_labels_chat",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 205,
+                "startColumn": 5,
+                "endLineNumber": 205,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "path": "/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "scheme": "vscode-remote",
+                "authority": "tunnel+gpu087"
+              }
+            }
+          },
+          "resolveId": "00084116-dbbd-4f0e-b31d-dd337e7f9fd6"
+        },
+        {
+          "value": " in qwenvl/data/utils.py):** This is a \"post-processing\" approach. It takes the final tokenized ",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          }
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "input_ids",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 174,
+                "startColumn": 5,
+                "endLineNumber": 174,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "path": "/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "scheme": "vscode-remote",
+                "authority": "tunnel+gpu087"
+              }
+            }
+          },
+          "resolveId": "71c73623-2a6a-4dd0-9137-a7ea04211180"
+        },
+        {
+          "value": " tensor and creates the ",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          },
+          "uris": {}
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "labels",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 178,
+                "startColumn": 3,
+                "endLineNumber": 178,
+                "endColumn": 3
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "path": "/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "scheme": "vscode-remote",
+                "authority": "tunnel+gpu087"
+              }
+            }
+          },
+          "resolveId": "ce5cffe0-a6ff-46eb-8d25-c895f8130151"
+        },
+        {
+          "value": " tensor by searching for special token patterns that delineate the start and end of assistant responses.\n*   **Approach 2 (",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          }
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "make_labels_new",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 2,
+                "startColumn": 5,
+                "endLineNumber": 2,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-notebook-cell://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb#W3sdnNjb2RlLXJlbW90ZQ%3D%3D",
+                "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+                "scheme": "vscode-notebook-cell",
+                "authority": "tunnel+gpu087",
+                "fragment": "W3sdnNjb2RlLXJlbW90ZQ=="
+              }
+            }
+          },
+          "resolveId": "76756806-b1b3-4cc0-945f-ab5b40df72cf"
+        },
+        {
+          "value": " in prototyping.ipynb):** This is a \"generative\" or \"concurrent\" approach. It iterates through the structured conversation data (",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          },
+          "uris": {}
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "messages",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 4,
+                "startColumn": 5,
+                "endLineNumber": 4,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-notebook-cell://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb#W3sdnNjb2RlLXJlbW90ZQ%3D%3D",
+                "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+                "scheme": "vscode-notebook-cell",
+                "authority": "tunnel+gpu087",
+                "fragment": "W3sdnNjb2RlLXJlbW90ZQ=="
+              }
+            }
+          },
+          "resolveId": "bd3daa34-8c28-4595-a7cd-10ffc5cb277b"
+        },
+        {
+          "value": ") and builds both the prompt string and the ",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          },
+          "uris": {}
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "labels",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 178,
+                "startColumn": 3,
+                "endLineNumber": 178,
+                "endColumn": 3
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "path": "/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "scheme": "vscode-remote",
+                "authority": "tunnel+gpu087"
+              }
+            }
+          },
+          "resolveId": "8554f8e6-4bb5-4cc7-96e6-ce5627cd5ac3"
+        },
+        {
+          "value": " tensor piece by piece at the same time, before the final tensors are concatenated.\n\n---\n\n### Comparison\n\n| Feature | Approach 1 (",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          }
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "make_labels",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 173,
+                "startColumn": 5,
+                "endLineNumber": 173,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "path": "/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "scheme": "vscode-remote",
+                "authority": "tunnel+gpu087"
+              }
+            }
+          },
+          "resolveId": "f5d4c60d-d77b-4a2e-addf-3bd2436c6900"
+        },
+        {
+          "value": "/",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          },
+          "uris": {}
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "make_labels_chat",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 205,
+                "startColumn": 5,
+                "endLineNumber": 205,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "path": "/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "scheme": "vscode-remote",
+                "authority": "tunnel+gpu087"
+              }
+            }
+          },
+          "resolveId": "9f0832c1-79e8-4586-9302-fb08564c7283"
+        },
+        {
+          "value": ") | Approach 2 (",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          },
+          "uris": {}
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "make_labels_new",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 2,
+                "startColumn": 5,
+                "endLineNumber": 2,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-notebook-cell://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb#W3sdnNjb2RlLXJlbW90ZQ%3D%3D",
+                "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+                "scheme": "vscode-notebook-cell",
+                "authority": "tunnel+gpu087",
+                "fragment": "W3sdnNjb2RlLXJlbW90ZQ=="
+              }
+            }
+          },
+          "resolveId": "db8d0ef7-212a-4d07-a626-ab5a91ab666b"
+        },
+        {
+          "value": ") |\n| :--- | :--- | :--- |\n| **Readability** | **Less Readable.** The logic is dense and relies on understanding tensor manipulations and token ID searches. It's not immediately obvious what part of the original text is being unmasked without tracing the token patterns. | **More Readable.** The logic directly follows the structure of the conversation. The ",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          }
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "if role == 'assistant'",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 20,
+                "startColumn": 19,
+                "endLineNumber": 20,
+                "endColumn": 19
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-notebook-cell://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb#W3sdnNjb2RlLXJlbW90ZQ%3D%3D",
+                "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+                "scheme": "vscode-notebook-cell",
+                "authority": "tunnel+gpu087",
+                "fragment": "W3sdnNjb2RlLXJlbW90ZQ=="
+              }
+            }
+          },
+          "resolveId": "87591182-f4cd-4956-9bea-712170775ce7"
+        },
+        {
+          "value": " condition makes the intent clear: only label the assistant's text. The code reads like a description of the process. |\n| **Error Proneness** | **More Error-Prone.** This approach is brittle. It can fail if the tokenizer behaves unexpectedly (e.g., splitting special tokens) or if the prompt construction logic changes without a corresponding update to the label-making functions. The `assert` statements in ",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          }
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "make_labels_chat",
+            "kind": 11,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 205,
+                "startColumn": 5,
+                "endLineNumber": 205,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "path": "/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "scheme": "vscode-remote",
+                "authority": "tunnel+gpu087"
+              }
+            }
+          },
+          "resolveId": "25b4b4a0-f798-4c1b-9784-256238c54d21"
+        },
+        {
+          "value": " hint at the potential for mismatches. | **Less Error-Prone.** This approach is more robust because it generates the labels from the same source data (",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          },
+          "uris": {}
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "messages",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 4,
+                "startColumn": 5,
+                "endLineNumber": 4,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-notebook-cell://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb#W3sdnNjb2RlLXJlbW90ZQ%3D%3D",
+                "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+                "scheme": "vscode-notebook-cell",
+                "authority": "tunnel+gpu087",
+                "fragment": "W3sdnNjb2RlLXJlbW90ZQ=="
+              }
+            }
+          },
+          "resolveId": "bccd9895-3805-41c8-ac14-0e604362c512"
+        },
+        {
+          "value": ") that is used to generate the prompt. This tight coupling ensures they are always in sync. It avoids relying on searching for token patterns in a large tensor. |\n| **Maintainability** | **Harder to Maintain.** If you need to support a new conversation format or change special tokens, you have to modify the complex token-searching logic. Debugging requires inspecting large ",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          }
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "input_ids",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 174,
+                "startColumn": 5,
+                "endLineNumber": 174,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "path": "/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "scheme": "vscode-remote",
+                "authority": "tunnel+gpu087"
+              }
+            }
+          },
+          "resolveId": "ea3eb6c0-bb16-4143-aa21-85fa93032c6e"
+        },
+        {
+          "value": " and ",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          },
+          "uris": {}
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "labels",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 178,
+                "startColumn": 3,
+                "endLineNumber": 178,
+                "endColumn": 3
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "path": "/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+                "scheme": "vscode-remote",
+                "authority": "tunnel+gpu087"
+              }
+            }
+          },
+          "resolveId": "092e8ef4-a166-482c-913b-b59e63cadf32"
+        },
+        {
+          "value": " tensors to find where the pattern matching failed. | **Easier to Maintain.** Changes to the conversation format can be handled by adding or modifying logic within the loop that processes ",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          },
+          "uris": {}
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "messages",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 4,
+                "startColumn": 5,
+                "endLineNumber": 4,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-notebook-cell://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb#W3sdnNjb2RlLXJlbW90ZQ%3D%3D",
+                "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+                "scheme": "vscode-notebook-cell",
+                "authority": "tunnel+gpu087",
+                "fragment": "W3sdnNjb2RlLXJlbW90ZQ=="
+              }
+            }
+          },
+          "resolveId": "a08fe065-c71a-4572-b95f-3a5a2753cacb"
+        },
+        {
+          "value": ". The helper functions (",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          },
+          "uris": {}
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "add_text",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 20,
+                "startColumn": 7,
+                "endLineNumber": 20,
+                "endColumn": 7
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-notebook-cell://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb#W3sdnNjb2RlLXJlbW90ZQ%3D%3D",
+                "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+                "scheme": "vscode-notebook-cell",
+                "authority": "tunnel+gpu087",
+                "fragment": "W3sdnNjb2RlLXJlbW90ZQ=="
+              }
+            }
+          },
+          "resolveId": "743c1401-0727-410d-b98f-f39891d0effe"
+        },
+        {
+          "value": ", ",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          },
+          "uris": {}
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "add_vision",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 29,
+                "startColumn": 7,
+                "endLineNumber": 29,
+                "endColumn": 7
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-notebook-cell://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb#W3sdnNjb2RlLXJlbW90ZQ%3D%3D",
+                "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+                "scheme": "vscode-notebook-cell",
+                "authority": "tunnel+gpu087",
+                "fragment": "W3sdnNjb2RlLXJlbW90ZQ=="
+              }
+            }
+          },
+          "resolveId": "b370416b-6a00-4ce1-9b60-20c7cd262c2e"
+        },
+        {
+          "value": ") make the code modular and easy to extend. Debugging is simpler as you can inspect the pieces as they are built. |\n\n### Judgment\n\nThe ",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          }
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "make_labels_new",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 2,
+                "startColumn": 5,
+                "endLineNumber": 2,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-notebook-cell://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb#W3sdnNjb2RlLXJlbW90ZQ%3D%3D",
+                "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+                "scheme": "vscode-notebook-cell",
+                "authority": "tunnel+gpu087",
+                "fragment": "W3sdnNjb2RlLXJlbW90ZQ=="
+              }
+            }
+          },
+          "resolveId": "9b99544b-bc53-40ed-a5aa-086d5686d0e8"
+        },
+        {
+          "value": " function from ",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          },
+          "uris": {}
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "$mid": 1,
+            "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb",
+            "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          }
+        },
+        {
+          "value": " is the superior approach.\n\n*   **Readability:** Its logic is more transparent and directly maps to the structure of the conversation data.\n*   **Robustness:** It is inherently less error-prone because it avoids the fragile process of searching for token patterns in a finalized tensor. By building the prompt and labels concurrently from the same source, it guarantees their alignment.\n*   **Maintainability:** It is significantly easier to debug, modify, and extend. The code is more modular and self-documenting.\n\nWhile the functions in ",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          }
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "$mid": 1,
+            "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+            "path": "/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          }
+        },
+        {
+          "value": " are functional, they represent a more complex and brittle solution to the problem. The ",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          },
+          "uris": {}
+        },
+        {
+          "kind": "inlineReference",
+          "inlineReference": {
+            "name": "make_labels_new",
+            "kind": 12,
+            "containerName": "",
+            "location": {
+              "range": {
+                "startLineNumber": 2,
+                "startColumn": 5,
+                "endLineNumber": 2,
+                "endColumn": 5
+              },
+              "uri": {
+                "$mid": 1,
+                "external": "vscode-notebook-cell://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb#W3sdnNjb2RlLXJlbW90ZQ%3D%3D",
+                "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+                "scheme": "vscode-notebook-cell",
+                "authority": "tunnel+gpu087",
+                "fragment": "W3sdnNjb2RlLXJlbW90ZQ=="
+              }
+            }
+          },
+          "resolveId": "8a067d33-64d1-4d04-81b9-b6e126cd0979"
+        },
+        {
+          "value": " function is a better-engineered, more robust, and more maintainable implementation.",
+          "supportThemeIcons": false,
+          "supportHtml": false,
+          "baseUri": {
+            "$mid": 1,
+            "path": "/projects/cft_vlm/finetune/",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          }
+        }
+      ],
+      "responseId": "response_c509bd21-5204-4a8e-9a5c-07ffa3ba72a1",
+      "result": {
+        "timings": {
+          "firstProgress": 25725,
+          "totalElapsed": 34703
+        },
+        "metadata": {
+          "codeBlocks": [],
+          "messages": [
+            {
+              "role": "user",
+              "content": "You see to make labels for supervised finetuning I currently have two strategies. The make_labels and make_labels_chat functions in utils.py, and the make_labels_new function in the prototyping.ipynb cell 4. I would like you to carefully examine the code, analyze the purpose of each function and code block. Compare and contrast the two different approaches. Give an impartial judgement as to which one is more readable, less error prone, and easier to maintain."
+            },
+            {
+              "role": "assistant",
+              "content": "Here is a comparison of the two approaches for creating labels for supervised fine-tuning.\n\n### Summary\n\nThe two approaches achieve the same goal of creating labels for model training by masking out user/system prompts and only calculating loss on the assistant's responses. However, they do so with fundamentally different strategies.\n\n*   **Approach 1 (`make_labels`/`make_labels_chat` in [qwenvl/data/utils.py](qwenvl/data/utils.py)):** This is a \"post-processing\" approach. It takes the final tokenized `input_ids` tensor and creates the `labels` tensor by searching for special token patterns that delineate the start and end of assistant responses.\n*   **Approach 2 (`make_labels_new` in [prototyping.ipynb](prototyping.ipynb)):** This is a \"generative\" or \"concurrent\" approach. It iterates through the structured conversation data (`messages`) and builds both the prompt string and the `labels` tensor piece by piece at the same time, before the final tensors are concatenated.\n\n---\n\n### Comparison\n\n| Feature | Approach 1 (`make_labels`/`make_labels_chat`) | Approach 2 (`make_labels_new`) |\n| :--- | :--- | :--- |\n| **Readability** | **Less Readable.** The logic is dense and relies on understanding tensor manipulations and token ID searches. It's not immediately obvious what part of the original text is being unmasked without tracing the token patterns. | **More Readable.** The logic directly follows the structure of the conversation. The `if role == 'assistant'` condition makes the intent clear: only label the assistant's text. The code reads like a description of the process. |\n| **Error Proneness** | **More Error-Prone.** This approach is brittle. It can fail if the tokenizer behaves unexpectedly (e.g., splitting special tokens) or if the prompt construction logic changes without a corresponding update to the label-making functions. The `assert` statements in [`make_labels_chat`](qwenvl/data/utils.py) hint at the potential for mismatches. | **Less Error-Prone.** This approach is more robust because it generates the labels from the same source data (`messages`) that is used to generate the prompt. This tight coupling ensures they are always in sync. It avoids relying on searching for token patterns in a large tensor. |\n| **Maintainability** | **Harder to Maintain.** If you need to support a new conversation format or change special tokens, you have to modify the complex token-searching logic. Debugging requires inspecting large `input_ids` and `labels` tensors to find where the pattern matching failed. | **Easier to Maintain.** Changes to the conversation format can be handled by adding or modifying logic within the loop that processes `messages`. The helper functions (`add_text`, `add_vision`) make the code modular and easy to extend. Debugging is simpler as you can inspect the pieces as they are built. |\n\n### Judgment\n\nThe `make_labels_new` function from [prototyping.ipynb](prototyping.ipynb) is the superior approach.\n\n*   **Readability:** Its logic is more transparent and directly maps to the structure of the conversation data.\n*   **Robustness:** It is inherently less error-prone because it avoids the fragile process of searching for token patterns in a finalized tensor. By building the prompt and labels concurrently from the same source, it guarantees their alignment.\n*   **Maintainability:** It is significantly easier to debug, modify, and extend. The code is more modular and self-documenting.\n\nWhile the functions in `qwenvl/data/utils.py` are functional, they represent a more complex and brittle solution to the problem. The `make_labels_new` function is a better-engineered, more robust, and more maintainable implementation."
+            }
+          ],
+          "modelMessageId": "5931c030-6dbb-4676-865a-92e7f9eca7f3",
+          "responseId": "f58dd3cc-844f-45fa-b4cf-af223f6d10ca",
+          "sessionId": "6bc9b734-daac-408e-8033-2fd141496419",
+          "agentId": "github.copilot.workspace"
+        }
+      },
+      "followups": [
+        {
+          "kind": "reply",
+          "agentId": "github.copilot.workspace",
+          "message": "Can you explain the code structure?"
+        }
+      ],
+      "isCanceled": false,
+      "agent": {
+        "extensionId": {
+          "value": "GitHub.copilot-chat",
+          "_lower": "github.copilot-chat"
+        },
+        "publisherDisplayName": "GitHub",
+        "extensionPublisherId": "GitHub",
+        "extensionDisplayName": "GitHub Copilot Chat",
+        "id": "github.copilot.workspace",
+        "description": "Ask about your workspace",
+        "metadata": {
+          "sampleRequest": "How do I build this project?",
+          "themeIcon": {
+            "id": "code"
+          },
+          "hasFollowups": true,
+          "isSecondary": true,
+          "supportIssueReporting": false
+        },
+        "name": "workspace",
+        "fullName": "Workspace",
+        "locations": [
+          "panel"
+        ],
+        "slashCommands": [
+          {
+            "name": "explain",
+            "description": "Explain how the code in your active editor works"
+          },
+          {
+            "name": "tests",
+            "description": "Generate unit tests for the selected code",
+            "disambiguation": [
+              {
+                "category": "create_tests",
+                "description": "The user wants to generate unit tests.",
+                "examples": [
+                  "Generate tests for my selection using pytest."
+                ]
+              }
+            ]
+          },
+          {
+            "name": "fix",
+            "description": "Propose a fix for the problems in the selected code",
+            "sampleRequest": "There is a problem in this code. Rewrite the code to show it with the bug fixed."
+          },
+          {
+            "name": "new",
+            "description": "Scaffold code for a new file or project in a workspace",
+            "sampleRequest": "Create a RESTful API server using typescript",
+            "isSticky": true,
+            "disambiguation": [
+              {
+                "category": "create_new_workspace_or_extension",
+                "description": "The user wants to create a complete Visual Studio Code workspace from scratch, such as a new application or a Visual Studio Code extension. Use this category only if the question relates to generating or creating new workspaces in Visual Studio Code. Do not use this category for updating existing code or generating sample code snippets",
+                "examples": [
+                  "Scaffold a Node server.",
+                  "Create a sample project which uses the fileSystemProvider API.",
+                  "react application"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "newNotebook",
+            "description": "Create a new Jupyter Notebook",
+            "sampleRequest": "How do I create a notebook to load data from a csv file?",
+            "disambiguation": [
+              {
+                "category": "create_jupyter_notebook",
+                "description": "The user wants to create a new Jupyter notebook in Visual Studio Code.",
+                "examples": [
+                  "Create a notebook to analyze this CSV file."
+                ]
+              }
+            ]
+          },
+          {
+            "name": "fixTestFailure",
+            "description": "Propose a fix for the failing test",
+            "when": "config.github.copilot.chat.fixTestFailure.enabled"
+          },
+          {
+            "name": "setupTests",
+            "description": "Set up tests in your project (Experimental)",
+            "sampleRequest": "add playwright tests to my project",
+            "when": "config.github.copilot.chat.setupTests.enabled",
+            "disambiguation": [
+              {
+                "category": "set_up_tests",
+                "description": "The user wants to configure project test setup, framework, or test runner. The user does not want to fix their existing tests.",
+                "examples": [
+                  "Set up tests for this project."
+                ]
+              }
+            ]
+          }
+        ],
+        "disambiguation": [
+          {
+            "category": "workspace_project_questions",
+            "description": "The user wants to learn about or update the code or files in their current workspace. Questions in this category may be about understanding what the whole workspace does or locating the implementation of some code. This does not include generating or updating tests.",
+            "examples": [
+              "What does this project do?"
+            ]
+          },
+          {
+            "category": "find_code_in_workspace",
+            "description": "The user wants to locate the implementation of some functionality in their current workspace.",
+            "examples": [
+              "Where is the tree widget implemented?"
+            ]
+          },
+          {
+            "category": "generate_with_workspace_context",
+            "description": "The user wants to generate code based on multiple files in the workspace and did not specify which files to reference.",
+            "examples": [
+              "Create a README for this project."
+            ]
+          }
+        ]
+      },
+      "contentReferences": [
+        {
+          "kind": "reference",
+          "reference": {
+            "uri": {
+              "$mid": 1,
+              "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb",
+              "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+              "scheme": "vscode-remote",
+              "authority": "tunnel+gpu087"
+            },
+            "range": {
+              "startLineNumber": 157,
+              "startColumn": 1,
+              "endLineNumber": 228,
+              "endColumn": 1
+            }
+          },
+          "options": {}
+        },
+        {
+          "kind": "reference",
+          "reference": {
+            "uri": {
+              "$mid": 1,
+              "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/test_utils.py",
+              "path": "/projects/cft_vlm/finetune/qwenvl/data/test_utils.py",
+              "scheme": "vscode-remote",
+              "authority": "tunnel+gpu087"
+            },
+            "range": {
+              "startLineNumber": 1,
+              "startColumn": 1,
+              "endLineNumber": 36,
+              "endColumn": 26
+            }
+          },
+          "options": {}
+        },
+        {
+          "kind": "reference",
+          "reference": {
+            "$mid": 1,
+            "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+            "path": "/projects/cft_vlm/finetune/qwenvl/data/utils.py",
+            "scheme": "vscode-remote",
+            "authority": "tunnel+gpu087"
+          }
+        },
+        {
+          "kind": "reference",
+          "reference": {
+            "uri": {
+              "$mid": 1,
+              "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/finetune/qwenvl/eval.ipynb",
+              "path": "/projects/cft_vlm/finetune/qwenvl/eval.ipynb",
+              "scheme": "vscode-remote",
+              "authority": "tunnel+gpu087"
+            },
+            "range": {
+              "startLineNumber": 50,
+              "startColumn": 1,
+              "endLineNumber": 81,
+              "endColumn": 1
+            }
+          },
+          "options": {}
+        },
+        {
+          "kind": "reference",
+          "reference": {
+            "uri": {
+              "$mid": 1,
+              "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/openbiomedvid/src/openbiomedvid/train/3_placeholder_tokens.py",
+              "path": "/projects/cft_vlm/openbiomedvid/src/openbiomedvid/train/3_placeholder_tokens.py",
+              "scheme": "vscode-remote",
+              "authority": "tunnel+gpu087"
+            },
+            "range": {
+              "startLineNumber": 1,
+              "startColumn": 1,
+              "endLineNumber": 42,
+              "endColumn": 11
+            }
+          },
+          "options": {}
+        },
+        {
+          "kind": "reference",
+          "reference": {
+            "uri": {
+              "$mid": 1,
+              "external": "vscode-remote://tunnel%2Bgpu087/projects/cft_vlm/openbiomedvid/src/openbiomedvid/train/4_train_video.py",
+              "path": "/projects/cft_vlm/openbiomedvid/src/openbiomedvid/train/4_train_video.py",
+              "scheme": "vscode-remote",
+              "authority": "tunnel+gpu087"
+            },
+            "range": {
+              "startLineNumber": 1,
+              "startColumn": 1,
+              "endLineNumber": 42,
+              "endColumn": 1
+            }
+          },
+          "options": {}
+        },
+        {
+          "kind": "reference",
+          "reference": {
+            "uri": {
+              "$mid": 1,
+              "path": "/projects/cft_vlm/openbiomedvid/src/openbiomedvid/train/4_train_video.py",
+              "scheme": "vscode-remote",
+              "authority": "tunnel+gpu087"
+            },
+            "range": {
+              "startLineNumber": 215,
+              "startColumn": 1,
+              "endLineNumber": 241,
+              "endColumn": 1
+            }
+          },
+          "options": {}
+        },
+        {
+          "kind": "reference",
+          "reference": {
+            "uri": {
+              "$mid": 1,
+              "path": "/projects/cft_vlm/openbiomedvid/tore-train/tore_train/data_processors/labels_masking_processor.py",
+              "scheme": "vscode-remote",
+              "authority": "tunnel+gpu087"
+            },
+            "range": {
+              "startLineNumber": 13,
+              "startColumn": 1,
+              "endLineNumber": 48,
+              "endColumn": 6
+            }
+          },
+          "options": {}
+        },
+        {
+          "kind": "reference",
+          "reference": {
+            "uri": {
+              "$mid": 1,
+              "path": "/projects/cft_vlm/openbiomedvid/tore-train/tore_train/data_processors/labels_masking_processor.py",
+              "scheme": "vscode-remote",
+              "authority": "tunnel+gpu087"
+            },
+            "range": {
+              "startLineNumber": 52,
+              "startColumn": 1,
+              "endLineNumber": 200,
+              "endColumn": 23
+            }
+          },
+          "options": {}
+        },
+        {
+          "kind": "reference",
+          "reference": {
+            "$mid": 1,
+            "external": "vscode-notebook-cell://tunnel%2Bgpu087/projects/cft_vlm/finetune/prototyping.ipynb#W3sdnNjb2RlLXJlbW90ZQ%3D%3D",
+            "path": "/projects/cft_vlm/finetune/prototyping.ipynb",
+            "scheme": "vscode-notebook-cell",
+            "authority": "tunnel+gpu087",
+            "fragment": "W3sdnNjb2RlLXJlbW90ZQ=="
+          }
+        }
+      ],
+      "codeCitations": [],
+      "timestamp": 1751327469175
+    }
+  ]
+}

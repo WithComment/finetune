@@ -5,9 +5,11 @@ import shutil
 from typing import Callable
 import datasets
 from transformers import AutoTokenizer, Qwen2_5_VLProcessor
+
+from qwenvl.data.input_processor import InputProcessor
 from ..argument import ProcessingArguments, DataArguments
 from .packing import fast_best_fit_decreasing
-from .utils import get_image, get_video_frames, filter_cot, make_prompt, smart_resize
+from .utils import get_image, get_video_frames, filter_cot, smart_resize
 from .base import BaseDataset
 import pickle
 
@@ -22,7 +24,7 @@ class SFTDataset(BaseDataset):
   def __init__(
       self,
       name: str,
-      processor: Qwen2_5_VLProcessor,
+      processor: InputProcessor,
       proc_args: ProcessingArguments,
       data_args: DataArguments,
   ) -> None:
@@ -56,7 +58,7 @@ class SFTDataset(BaseDataset):
       )
       logger.info(f"Packing dataset into {len(self.bins)} bins.")
         
-    example_item = self.make_model_input(self.make_conversation([random.choice(self.ds)]))[1]
+    example_item = self.make_prompt(random.choice(self.ds))
     logger.info(f"Example item: {example_item}")
 
 
@@ -174,12 +176,6 @@ class SFTDataset(BaseDataset):
     self.ds = self.ds[self.split]
     return self.ds
   
-  def make_prompt(self, item):
-    return make_prompt(
-      [self.make_conversation([item])],
-      self.processor.tokenizer, self.for_training, self.mode
-    )
-
   def get_num_tokens(self):
 
     tokenizer = self.processor.tokenizer

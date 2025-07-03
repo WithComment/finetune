@@ -49,7 +49,8 @@ data_args="
     --dataset_use ${dataset_use} \
     --split ${split} \
     --portion ${portion} \
-    --sys_prompt ${sys_prompt}"
+    --sys_prompt ${sys_prompt} \
+    --data_packing False"
 
 proc_args=""
 

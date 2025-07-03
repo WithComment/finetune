@@ -18,7 +18,7 @@ class ModelArguments:
 @dataclass
 class DataArguments:
   dataset_use: str = field(default="")
-  data_packing: bool = field(default=True)
+  data_packing: bool = field(default=False)
   split: str = field(default="train")
   mode: str = field(default="ift", metadata={"help": "Training mode: 'cft', 'cpt', or 'ift'"})
   model_max_length: int = field(default=16384)

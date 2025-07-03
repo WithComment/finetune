@@ -29,11 +29,9 @@ from .utils import PruneOldStateCallback, get_logger, print_trainable_parameters
 from .data import avail_datasets, SFTDataset, BenchmarkDataset
 from .argument import *
 
-from transformers import Trainer, Qwen2_5_VLForConditionalGeneration
+from transformers import Trainer, Qwen2_5_VLForConditionalGeneration, Qwen2VLForConditionalGeneration
 
-from transformers.utils import logging as hf_logging
 
-hf_logging.set_verbosity_error()
 torch.set_num_threads(1)
 
 logger = get_logger(__name__)
@@ -115,9 +113,9 @@ def rank0_make_data_module(*args, **kwargs):
     return make_data_module(*args, **kwargs)
   if dist.get_rank() == 0:
     data_module = make_data_module(*args, **kwargs)
-  dist.barrier(device_ids=[dist.get_rank()])
+  dist.barrier()
   data_module = data_module or make_data_module(*args, **kwargs)
-  dist.barrier(device_ids=[dist.get_rank()])
+  dist.barrier()
   ds = data_module['train_dataset'] or data_module['eval_dataset']
   if hasattr(ds, 'bin_pkl_path') and dist.get_rank() == 0:
     ds.bin_pkl_path.unlink(missing_ok=True)
@@ -163,12 +161,17 @@ def train(attn_implementation="flash_attention_2"):
       proc_args=proc_args,
       for_training=True
   )
-
-  model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+  if "Qwen2.5" in model_args.model_name_or_path:
+    model_class = Qwen2_5_VLForConditionalGeneration
+  elif "Qwen2" in model_args.model_name_or_path:
+    model_class = Qwen2VLForConditionalGeneration
+    
+  model = model_class.from_pretrained(
       model_args.model_name_or_path,
       attn_implementation=attn_implementation,
       torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
   )
+  
   model = set_model(model, model_args)
   print_trainable_parameters_visual(model.visual)
   print_trainable_parameters(model.model)
@@ -196,9 +199,15 @@ def train(attn_implementation="flash_attention_2"):
     rank0_print(
         f"No checkpoint found at {training_args.output_dir}. Starting training from scratch.")
 
-  # Trainer will always save final model https://huggingface.co/docs/transformers/v4.52.3/en/main_classes/trainer#transformers.TrainingArguments.save_strategy
   trainer.train(resume_from_checkpoint=last_checkpoint)
 
+  # When training completes normally without preemption.
+  trainer.save_state()
+  trainer.save_model(training_args.output_dir)
+  
+  if trainer.is_world_process_zero():
+    processor.save_pretrained(training_args.output_dir)
+    
 if __name__ == "__main__":
   torch.set_num_threads(1)
   train(attn_implementation="flash_attention_2")

@@ -26,13 +26,6 @@ logger = get_logger(__name__)
 PLACEHOLDER_IDS = {151654, 151655, 151656}
 torch.set_num_threads(1)
 
-IM_START = "<|im_start|>"
-IM_END = "<|im_end|>"
-VISION_START = "<|vision_start|>"
-VISION_END = "<|vision_end|>"
-VIDEO_PAD = "<|video_pad|>"
-IMAGE_PAD = "<|image_pad|>"
-
 
 def make_cot(subtitle_file: Path):
   if not subtitle_file.exists():
@@ -98,7 +91,7 @@ def get_vid_frames_opencv(
 
 
 def get_video_frames(
-    video_file_path: Path,
+    video: Path,
     vid_proc_args: ProcessingArguments
 ) -> tuple[torch.Tensor, float]:
   """
@@ -106,9 +99,10 @@ def get_video_frames(
 
   It first tries using OpenCV for speed and falls back to PyAV for robustness.
   """
-  all_frames = video_file_path.parent.name == 'vid_processed'
-  video_str_path = str(video_file_path)
-  return get_vid_frames_opencv(video_str_path, vid_proc_args, all_frames)
+  if isinstance(video, str):
+    video = Path(video)
+  all_frames = video.parent.name == 'vid_processed'
+  return get_vid_frames_opencv(video, vid_proc_args, all_frames)
 
 
 def get_image(image) -> Image.Image:
@@ -144,196 +138,14 @@ def get_images_and_videos(
     if message['role'] == 'system':
       continue
     for content in message['content']:
-      if content['type'] == 'image':
+      if "image" in content:
         images.append(get_image(content['image']))
-      elif content['type'] == 'video':
+      elif "video" in content:
         frames, fps = get_video_frames(content['video'], vid_proc_args)
         videos.append(frames)
         fpss.append(fps)
   return (images, videos, fpss)
 
-
-def make_labels(
-    input_ids: torch.Tensor,
-    tokenizer: PreTrainedTokenizer,
-    ignore_idx: int = -100,
-) -> torch.Tensor:
-  labels = torch.ones_like(input_ids) * ignore_idx
-
-  # Get token IDs for the special tokens
-  im_end_token = tokenizer.encode(IM_END, add_special_tokens=False)[0]
-  vision_end_token = tokenizer.encode(
-      "<|vision_end|>", add_special_tokens=False)[0]
-
-  # Find all positions of these tokens
-  im_end_positions = (input_ids == im_end_token).nonzero(as_tuple=True)
-  vision_end_positions = (input_ids == vision_end_token).nonzero(as_tuple=True)
-
-  # For each vision_end token, find the next im_end token and unmask that region
-  if len(vision_end_positions[1]) > 0 and len(im_end_positions[1]) > 0:
-    for batch_idx, vision_end_idx in zip(vision_end_positions[0], vision_end_positions[1]):
-      # Find the next im_end token after this vision_end token
-      next_im_end_positions = im_end_positions[1][im_end_positions[1] > vision_end_idx]
-      if len(next_im_end_positions) > 0:
-        next_im_end_idx = next_im_end_positions[0]
-        # Unmask tokens between vision_end (exclusive) and im_end (exclusive)
-        start_idx = vision_end_idx + 1
-        end_idx = next_im_end_idx
-        if start_idx < end_idx:
-          labels[batch_idx, start_idx:end_idx] = input_ids[batch_idx,start_idx:end_idx]
-
-  return labels
-
-
-def make_labels_chat(
-    input_ids: torch.Tensor,
-    tokenizer: PreTrainedTokenizer,
-    ignore_idx: int = -100,
-    assistant_start: str = "<|im_start|>assistant\n",
-    assistant_end: str = "<|im_end|>"
-) -> torch.Tensor:
-
-  assistant_start = "<|im_start|>assistant\n"
-  assistant_end = "<|im_end|>"
-  labels = torch.ones_like(input_ids) * ignore_idx
-  a_start_ids = tokenizer.encode(assistant_start, return_tensors='pt')[0]
-  a_end_ids = tokenizer.encode(assistant_end, return_tensors='pt')[0]
-  assert len(a_end_ids) == 1
-  a_end_idx = list(zip(*torch.where(input_ids == a_end_ids[0])))
-  a_start_idx = list(zip(*torch.where(input_ids == a_start_ids[0])))
-  assert len(a_start_idx) == len(a_end_idx)
-  for (batch_idx, start_idx), (_, end_idx) in zip(a_start_idx, a_end_idx):
-    assert start_idx < end_idx, "Start index must be less than end index"
-    start_end_idx = start_idx + len(a_start_ids)
-    if torch.equal(input_ids[batch_idx, start_idx:start_end_idx], a_start_ids):
-      labels[batch_idx, start_end_idx:end_idx] = input_ids[batch_idx,start_end_idx:end_idx]
-
-  return labels
-
-
-def get_batch_images_and_videos(
-    batch,
-    vid_proc_args,
-) -> tuple[list[str], list[str]]:
-  images = list()
-  videos = list()
-  fpss = list()
-  for conversation in batch:
-    imgs, vids, fps = get_images_and_videos(
-        conversation, vid_proc_args
-    )
-    images.append(imgs)
-    videos.append(vids)
-    fpss.extend(fps)
-  image_count = sum(len(imgs) for imgs in images)
-  video_count = sum(len(vids) for vids in videos)
-
-  return (
-      None if image_count == 0 else images,
-      None if video_count == 0 else videos,
-      None if video_count == 0 else fpss
-  )
-
-
-def make_prompt(
-    batch: list[list[list[dict]]],
-    tokenizer: PreTrainedTokenizer,
-    for_training: bool,
-    mode: str,
-) -> str:
-  """
-  Make a prompt for the model.
-  If for_training is True, it will return a conversation template.
-  If for_training is False, it will return a single string.
-  """
-  if mode == "cft" or mode == "cpt":
-    all_prompts = list()
-    for _bin in batch:
-      text = list()
-      for convo in _bin:
-        text.append(IM_START)
-        for message in convo:
-          contents = message['content']
-          for content in contents:
-            if content['type'] == 'text':
-              text.append(content['text'])
-            elif content['type'] == 'image':
-              text.append(f"<|vision_start|><|image_pad|><|vision_end|>")
-            elif content['type'] == 'video':
-              text.append(f"<|vision_start|><|video_pad|><|vision_end|>")
-        text.append(IM_END)
-      all_prompts.append(''.join(text))
-    return all_prompts
-  
-
-
-def make_model_input(
-    batch: list[list[list[dict]]],
-    processor: Qwen2_5_VLProcessor,
-    proc_args: ProcessingArguments,
-    for_training: bool,
-    mode: str,
-):
-  """
-  Do not ask me why this is so complicated and nested and stuff.
-  DO NOT TOUCH unless you want to spend hours debugging.
-  AND YES, THIS IS TO YOU XIAOWEN.
-  
-  A batch `list` contains many bins `list`.
-  A bin contains many conversations `list`.
-  A conversation contains many messages `dict`.
-  A message contains a role and content `list`.
-  A content contains many items `dict` with type and text/image/video.
-  
-  The reason behind wrapping bins in a list is so that we know where to
-  add start and end tokens for CPT and CFT.
-  """
-  if isinstance(batch[0][0], dict):
-    # Make it a batch.
-    batch = [batch]
-
-  flat_batch = list()
-  for _bin in batch:
-    flat_bin = list()
-    for conversation in _bin:
-      flat_bin.extend(conversation)
-    flat_batch.append(flat_bin)
-    
-  if mode == 'ift':
-    text = processor.tokenizer.apply_chat_template(
-        flat_batch, tokenize=False, add_generation_prompt=not for_training
-    )
-  else:
-    text = make_prompt(
-        batch,
-        processor.tokenizer,
-        for_training=for_training,
-        mode=mode
-    )
-  
-  image_inputs, video_inputs, fpss = get_batch_images_and_videos(
-      flat_batch, proc_args)
-  data_dict = processor(
-      text=text,
-      images=image_inputs if image_inputs else None,
-      videos=video_inputs if video_inputs else None,
-      fps=fpss if fpss else None,
-      return_tensors="pt",
-      padding=True,
-      padding_side='right',  # Right-pad for flash_attention_2
-  )
-  if for_training:
-    if mode == 'ift':
-      data_dict['labels'] = make_labels_chat(
-          data_dict['input_ids'],
-          processor.tokenizer
-      )
-    else:
-      data_dict['labels'] = make_labels(
-          data_dict['input_ids'],
-          processor.tokenizer
-      )
-  return data_dict, text
 
 
 def filter_image(item, image_key='image', id_key=None):

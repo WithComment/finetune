@@ -11,7 +11,7 @@ from transformers import Qwen2_5_VLProcessor
 
 from qwenvl.argument import ProcessingArguments
 from qwenvl.data.base import BaseDataset
-from qwenvl.data.utils import make_cot, make_model_input, smart_resize, verify_video
+from qwenvl.data.utils import make_cot, smart_resize, verify_video
 
 
 from .sft import SFTDataset
@@ -230,16 +230,6 @@ class OpenbiomedvidDataset(SFTDataset):
         desc="Filtering out items with missing videos"
     )
     return ds
-  
-  
-  def make_model_input(self, batch_convo: list[dict]) -> tuple[dict, str]:
-    return make_model_input(
-      batch=batch_convo,
-      processor=self.processor,
-      proc_args=self.proc_args,
-      for_training=self.for_training,
-      mode=self.mode
-    )
 
 
 logger = logging.getLogger(__name__)

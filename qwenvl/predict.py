@@ -11,6 +11,7 @@ import torch
 import torch.distributed as dist
 import transformers
 
+from qwenvl.data.input_processor import InputProcessor
 from qwenvl.eval import comp_answer_basic, evaluate, yes_no_filter
 
 from .argument import DataArguments, ModelArguments, ProcessingArguments
@@ -38,6 +39,8 @@ def _load_model_and_processor(
     device: str,
 ) -> tuple[AutoModel, AutoProcessor]:
   """Load the Qwen model and processor."""
+  if not isinstance(model_path, str):
+    model_path = str(model_path)
   logger.info(f"Loading model from {model_path} on device {device}")
   if 'Qwen2-VL' in model_path:
     model = Qwen2VLForConditionalGeneration.from_pretrained(
@@ -64,7 +67,7 @@ def load_pretrained_qwen(model_path, device):
   checkpoint_dir = Path(os.environ.get('CHECKPOINT_DIR', ''))
   if (checkpoint_dir / model_path).exists():
     model_path = checkpoint_dir / model_path
-
+  
   try:
     model, processor = _load_model_and_processor(model_path, device)
   except OSError as e:
@@ -109,7 +112,7 @@ def _infer(
           **gen_config
       )
 
-    outputs = processor.batch_decode(output_ids, skip_special_tokens=True)
+    outputs = processor.tokenizer.batch_decode(output_ids, skip_special_tokens=True)
     for item, output in zip(item, outputs):
       output = output.split("assistant")[-1].strip().strip("\n")
       item['model_answer'] = output
@@ -198,6 +201,12 @@ def predict(
 
   model, processor, model_path = load_pretrained_qwen(model_path, device)
   processor = set_processor(processor, proc_args, data_args)
+  processor = InputProcessor(
+      processor=processor,
+      proc_args=proc_args,
+      add_generation_prompt=True,
+      mode='ift'
+  )
   data_module = rank0_make_data_module(
       processor=processor,
       data_args=data_args,
@@ -228,11 +237,9 @@ def predict(
       collate_fn=collate_fn,
       gen_config={
           'max_new_tokens': 64,
+          "eos_token_id": [151645, 151643],
           'do_sample': False,
-          "eos_token_id": [
-            151645,
-            151643
-          ],
+          'repetition_penalty': 1.1,
       },
       portion=data_args.portion,
   )

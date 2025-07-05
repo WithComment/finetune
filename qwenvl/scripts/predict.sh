@@ -39,28 +39,29 @@ dataset_use=$1
 model_use=${2:-"Qwen/Qwen2.5-VL-3B-Instruct"}
 split=${3:-"test"}
 portion=${4:-1.0}
-sys_prompt=${5:default}
-requeue=${6:-true}
+sys_prompt=${5:-"default"}
+requeue=${6:-false}
 
-eval_args="
+model_args="
   --model_name_or_path ${model_use}"
 
 data_args="
     --dataset_use ${dataset_use} \
     --split ${split} \
-    --portion ${portion} \
-    --sys_prompt ${sys_prompt} \
-    --data_packing False"
+    --portion ${portion}"
 
-proc_args=""
+proc_args="
+    --sys_prompt ${sys_prompt} \
+    --use_chat_template True \
+    --add_generation_prompt True"
 
 args="
-    ${eval_args} \
+    ${model_args} \
     ${data_args} \
     ${proc_args}"
 
-              
-echo "Starting training process in the background..."
+
+echo "Starting evaluation process in the background..."
 # Run torchrun in the background and save its PID
 torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.predict ${args} &
 PROC_ID=$!

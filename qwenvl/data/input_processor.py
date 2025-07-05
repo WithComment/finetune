@@ -11,6 +11,7 @@ from transformers import ProcessorMixin, BatchEncoding
 from transformers.models.qwen2_5_vl.processing_qwen2_5_vl import Qwen2_5_VLProcessorKwargs
 
 from qwenvl.data.utils import get_images_and_videos
+from qwenvl.utils import get_logger
 
 IM_START = "<|im_start|>"
 IM_END = "<|im_end|>"
@@ -18,6 +19,304 @@ VISION_START = "<|vision_start|>"
 VISION_END = "<|vision_end|>"
 VIDEO_PAD = "<|video_pad|>"
 IMAGE_PAD = "<|image_pad|>"
+
+logger = get_logger(__name__)
+
+class InputProcessor(ProcessorMixin):
+
+  attributes = ["image_processor", "tokenizer", "video_processor"]
+  valid_kwargs = ["chat_template"]
+
+  image_processor_class = "AutoImageProcessor"
+  video_processor_class = "AutoVideoProcessor"
+  tokenizer_class = ("Qwen2Tokenizer", "Qwen2TokenizerFast")
+
+  def __init__(
+      self,
+      processor,
+      config: ProcessingArguments,
+      **kwargs
+  ):
+    """
+    Initialize the input processor for vision-language model fine-tuning.
+    Args:
+      processor: The main processor containing tokenizer, image_processor, and video_processor.
+      chat_template (optional): Template for formatting chat conversations.
+      **kwargs: Additional keyword arguments including:
+        sys_prompt (str, optional): System prompt for the assistant. Defaults to "You are a helpful assistant."
+        mode (str, optional): Processing mode, typically "ift" for instruction fine-tuning. Defaults to "ift".
+        add_generation_prompt (bool, optional): Whether to add generation prompt to conversations. Defaults to False.
+        add_vision_id (bool, optional): Whether to add vision start/end tokens around visual content. Defaults to False.
+        ignore_idx (int, optional): Index value to ignore during loss computation. Defaults to -100.
+        proc_args (ProcessingArguments, optional): Processing arguments configuration. Defaults to ProcessingArguments().
+    Attributes:
+      tokenizer: Tokenizer from the processor for text processing.
+      image_processor: Image processor for handling image inputs.
+      video_processor: Video processor for handling video inputs.
+      image_token (str): Token used as placeholder for images.
+      video_token (str): Token used as placeholder for videos.
+      image_token_id (int): Token ID for image placeholder.
+      video_token_id (int): Token ID for video placeholder.
+      vs_id (int): Vision start token ID.
+      ve_id (int): Vision end token ID.
+    """
+    tokenizer = copy.deepcopy(processor.tokenizer)
+    image_processor = copy.deepcopy(processor.image_processor)
+    video_processor = copy.deepcopy(processor.video_processor)
+    self.image_token = "<|image_pad|>" if not hasattr(
+        tokenizer, "image_token") else tokenizer.image_token
+    self.video_token = "<|video_pad|>" if not hasattr(
+        tokenizer, "video_token") else tokenizer.video_token
+    self.image_token_id = (
+        tokenizer.image_token_id
+        if getattr(tokenizer, "image_token_id", None)
+        else tokenizer.convert_tokens_to_ids(self.image_token)
+    )
+    self.video_token_id = (
+        tokenizer.video_token_id
+        if getattr(tokenizer, "video_token_id", None)
+        else tokenizer.convert_tokens_to_ids(self.video_token)
+    )
+    self.config = config
+    chat_template = tokenizer.chat_template
+    super().__init__(image_processor, tokenizer,
+                     video_processor, chat_template=chat_template)
+
+  def _process_vision(
+      self,
+      images=None,
+      videos=None,
+      **kwargs
+  ) -> BatchFeature:
+    output_kwargs = self._merge_kwargs(
+        Qwen2_5_VLProcessorKwargs,
+        **kwargs
+    )
+    img_kwargs = output_kwargs['images_kwargs']
+    vid_kwargs = output_kwargs['videos_kwargs']
+    return_tensors = vid_kwargs.pop("return_tensors", None)
+    vid_kwargs.pop("fps", None)
+    image_inputs = videos_inputs = {}
+    if images is not None:
+      image_inputs = self.image_processor(images=images, **img_kwargs)
+
+    if videos is not None:
+      videos_inputs = self.video_processor(videos=videos, **vid_kwargs)
+      video_grid_thw = videos_inputs["video_grid_thw"]
+      fps = kwargs.get("fps", None)
+
+      if isinstance(fps, (int, float)):
+        second_per_grid_ts = [
+            self.video_processor.temporal_patch_size / fps] * len(video_grid_thw)
+      elif hasattr(fps, "__len__") and len(fps) == len(video_grid_thw):
+        second_per_grid_ts = [
+            self.video_processor.temporal_patch_size / tmp for tmp in fps]
+      else:
+        raise ValueError(
+            f"The length of fps ({len(fps) if hasattr(fps, '__len__') else fps}) must be equal to the length of video_grid_thw ({len(video_grid_thw)}) or fps should be a single number.")
+      videos_inputs.update({"second_per_grid_ts": second_per_grid_ts})
+
+    return BatchFeature(data={**image_inputs, **videos_inputs}, tensor_type=return_tensors)
+
+  def get_images_and_videos(self, messages, proc_args=None):
+    return [
+      val or None
+      for val in get_images_and_videos(messages, proc_args or self.proc_args)
+    ]
+
+  def _process_one(
+      self,
+      messages,
+      text_only,
+      **kwargs,
+  ):
+    use_chat_template = self.config.use_chat_template
+    add_generation_prompt = self.config.add_generation_prompt
+    add_vision_id = self.config.add_vision_id
+    ignore_idx = self.config.ignore_idx
+    
+    
+    if add_generation_prompt and not use_chat_template:
+      logger.warning(
+        "`add_generation_prompt` is set to True, but `use_chat_template` is False. `add_generation_prompt` has no effect when `use_chat_template` is False. "
+      )
+    text = []
+    input_ids = []
+    labels = []
+    img_idx = 0
+    vid_idx = 0
+    vs_id = self.tokenizer.encode(VISION_START)[0]
+    ve_id = self.tokenizer.encode(VISION_END)[0]
+    
+    if text_only:
+      vision_features = BatchFeature()
+    else:
+      images, videos, fps = self.get_images_and_videos(messages, self.config)
+
+      vision_features = self._process_vision(
+          images=images,
+          videos=videos,
+          fps=fps,
+          **kwargs
+      )
+
+    def add_text(m, role):
+      '''
+      Add text to the input sequence and update input_ids and labels.
+      labels are set to ignore_idx for non-assistant roles.
+      '''
+      text.append(m)
+      tokenized_m = self.tokenizer.encode(m)
+      input_ids.extend(tokenized_m)
+      if role == 'assistant':
+        labels.extend(tokenized_m)
+      else:
+        labels.extend([ignore_idx] * len(tokenized_m))
+
+    def add_vision(vision_type, idx):
+      if not vision_type in ['image', 'video']:
+        raise ValueError("vision_type must be either 'image' or 'video'.")
+      m = ''
+      if add_vision_id:
+        m += f"{'Picture' if vision_type == 'image' else 'Video'} {idx + 1}: "
+
+      m += f"{VISION_START}<|{vision_type}_pad|>{VISION_END}"
+      text.append(m)
+
+      if text_only:
+        vision_token_count = 1
+      else:
+        merge_size = getattr(self, f'{vision_type}_processor').merge_size ** 2
+        vision_token_count = vision_features[f'{vision_type}_grid_thw'][idx].prod(
+        ) // merge_size
+      vision_token_id = getattr(self, f'{vision_type}_token_id')
+      input_ids.append(vs_id)
+      input_ids.extend([vision_token_id] * vision_token_count)
+      input_ids.append(ve_id)
+      labels.extend([ignore_idx] * (vision_token_count + 2))
+      return idx + 1
+
+    for message in messages:
+
+      if not (isinstance(message['content'], list) or isinstance(message['content'], str)):
+        raise ValueError("Content must be a string or a list of dictionaries.")
+
+      if use_chat_template:
+        add_text(f"{IM_START}{message['role']}\n", None)
+
+      if isinstance(message['content'], str):
+        add_text(f"{message['content']}", message['role'])
+      else:
+        for content in message['content']:
+          if 'image' in content:
+            img_idx = add_vision('image', img_idx)
+          elif 'video' in content:
+            vid_idx = add_vision('video', vid_idx)
+          elif 'text' in content:
+            add_text(content['text'], message['role'])
+
+      if use_chat_template:
+        add_text(f"{IM_END}\n", None)
+        
+    if use_chat_template and add_generation_prompt:
+      add_text(f"{IM_START}assistant\n", 'assistant')
+      
+    text = ''.join(text)
+    be = BatchEncoding(data={
+        'input_ids': torch.tensor(input_ids),
+        'labels': torch.tensor(labels)})
+    return text, be, vision_features
+
+  def get_features_with_text(
+      self,
+      conversations,
+      text_only=False,
+      **kwargs
+  ):
+    
+    kwargs['return_tensors'] = 'pt'
+    output_kwargs = self._merge_kwargs(
+        Qwen2_5_VLProcessorKwargs,
+        tokenizer_init_kwargs=self.tokenizer.init_kwargs,
+        **kwargs,
+    )
+    batch_text_features = []
+    batch_features = BatchFeature()
+    batch_text = []
+
+    if isinstance(conversations[0], dict):
+      conversations = [conversations]
+
+    for messages in conversations:
+      
+      text, text_features, vision_features = self._process_one(
+          messages=messages,
+          text_only=text_only,
+          **kwargs
+      )
+      batch_text_features.append(text_features)
+      for k, v in vision_features.items():
+        if k not in batch_features:
+          batch_features[k] = []
+        batch_features[k].append(v)
+      batch_text.append(text)
+
+    for k, v in batch_features.items():
+      batch_features[k] = torch.cat(v, dim=0)
+
+    target_length = max(
+        [len(feat['input_ids']) for feat in batch_text_features]
+    )
+    input_ids = [feat['input_ids'] for feat in batch_text_features]
+    attn_masks = [[1] * len(feat['input_ids']) for feat in batch_text_features]
+    labels = [feat['labels'] for feat in batch_text_features]
+    input_ids, attn_masks = pad_and_stack_tensors(
+        tensors=input_ids,
+        target_length=target_length,
+        padding_value=self.tokenizer.pad_token_id,
+        **output_kwargs['text_kwargs'],
+    )
+    labels, _ = pad_and_stack_tensors(
+        tensors=labels,
+        target_length=target_length,
+        padding_value=self.config.ignore_idx,
+        **output_kwargs['text_kwargs'],
+    )
+    batch_features['input_ids'] = input_ids
+    batch_features['attention_mask'] = attn_masks
+    batch_features['labels'] = labels
+    return batch_text, batch_features
+
+  def __call__(
+      self,
+      conversations,
+      text_only=False,
+      **kwargs
+  ):
+    return self.get_features_with_text(conversations, text_only, **kwargs)[1]
+  
+  def get_text(
+      self,
+      conversations,
+      text_only=False,
+      **kwargs,
+  ):
+    return self.get_features_with_text(conversations, text_only, **kwargs)[0]
+  
+  
+  def get_text_length(
+      self,
+      conversation,
+      **kwargs,
+  ):
+    """
+    Get the length of the tokenized text in the conversation.
+    """
+    if not isinstance(conversation[0], dict):
+      raise ValueError("Conversations must .")
+    text, batch_features = self.get_features_with_text(
+        conversation, text_only=True, **kwargs)
+    return batch_features.input_ids.shape[1]
 
 
 def pad_and_stack_tensors(
@@ -101,302 +400,6 @@ def pad_and_stack_tensors(
   stacked_masks = torch.stack(attention_masks)
 
   return stacked_tensors, stacked_masks
-
-
-class InputProcessor(ProcessorMixin):
-
-  attributes = ["image_processor", "tokenizer", "video_processor"]
-  valid_kwargs = ["chat_template"]
-
-  image_processor_class = "AutoImageProcessor"
-  video_processor_class = "AutoVideoProcessor"
-  tokenizer_class = ("Qwen2Tokenizer", "Qwen2TokenizerFast")
-
-  def __init__(
-      self,
-      processor,
-      chat_template=None,
-      **kwargs
-  ):
-    """
-    Initialize the input processor for vision-language model fine-tuning.
-    Args:
-      processor: The main processor containing tokenizer, image_processor, and video_processor.
-      chat_template (optional): Template for formatting chat conversations.
-      **kwargs: Additional keyword arguments including:
-        sys_prompt (str, optional): System prompt for the assistant. Defaults to "You are a helpful assistant."
-        mode (str, optional): Processing mode, typically "ift" for instruction fine-tuning. Defaults to "ift".
-        add_generation_prompt (bool, optional): Whether to add generation prompt to conversations. Defaults to False.
-        add_vision_id (bool, optional): Whether to add vision start/end tokens around visual content. Defaults to False.
-        ignore_idx (int, optional): Index value to ignore during loss computation. Defaults to -100.
-        proc_args (ProcessingArguments, optional): Processing arguments configuration. Defaults to ProcessingArguments().
-    Attributes:
-      tokenizer: Tokenizer from the processor for text processing.
-      image_processor: Image processor for handling image inputs.
-      video_processor: Video processor for handling video inputs.
-      image_token (str): Token used as placeholder for images.
-      video_token (str): Token used as placeholder for videos.
-      image_token_id (int): Token ID for image placeholder.
-      video_token_id (int): Token ID for video placeholder.
-      vs_id (int): Vision start token ID.
-      ve_id (int): Vision end token ID.
-    """
-    tokenizer = copy.deepcopy(processor.tokenizer)
-    image_processor = copy.deepcopy(processor.image_processor)
-    video_processor = copy.deepcopy(processor.video_processor)
-    self.image_token = "<|image_pad|>" if not hasattr(
-        tokenizer, "image_token") else tokenizer.image_token
-    self.video_token = "<|video_pad|>" if not hasattr(
-        tokenizer, "video_token") else tokenizer.video_token
-    self.image_token_id = (
-        tokenizer.image_token_id
-        if getattr(tokenizer, "image_token_id", None)
-        else tokenizer.convert_tokens_to_ids(self.image_token)
-    )
-    self.video_token_id = (
-        tokenizer.video_token_id
-        if getattr(tokenizer, "video_token_id", None)
-        else tokenizer.convert_tokens_to_ids(self.video_token)
-    )
-    if chat_template is None:
-      chat_template = tokenizer.chat_template
-      
-    self.vs_id = tokenizer.encode(VISION_START)[0]
-    self.ve_id = tokenizer.encode(VISION_END)[0]
-    self.sys_prompt = kwargs.pop("sys_prompt", "You are a helpful assistant.")
-    self.mode = kwargs.pop("mode", "ift")
-    self.add_generation_prompt = kwargs.pop("add_generation_prompt", False)
-    self.add_vision_id = kwargs.pop("add_vision_id", False)
-    self.ignore_idx = kwargs.pop("ignore_idx", -100)
-    self.proc_args = kwargs.pop("proc_args", ProcessingArguments())
-    super().__init__(image_processor, tokenizer,
-                     video_processor, chat_template=chat_template)
-
-  def _process_vision(
-      self,
-      images=None,
-      videos=None,
-      **kwargs
-  ) -> BatchFeature:
-    output_kwargs = self._merge_kwargs(
-        Qwen2_5_VLProcessorKwargs,
-        **kwargs
-    )
-    img_kwargs = output_kwargs['images_kwargs']
-    vid_kwargs = output_kwargs['videos_kwargs']
-    return_tensors = vid_kwargs.pop("return_tensors", None)
-    vid_kwargs.pop("fps", None)
-    image_inputs = videos_inputs = {}
-    if images is not None:
-      image_inputs = self.image_processor(images=images, **img_kwargs)
-
-    if videos is not None:
-      videos_inputs = self.video_processor(videos=videos, **vid_kwargs)
-      video_grid_thw = videos_inputs["video_grid_thw"]
-      fps = kwargs.get("fps", None)
-
-      if isinstance(fps, (int, float)):
-        second_per_grid_ts = [
-            self.video_processor.temporal_patch_size / fps] * len(video_grid_thw)
-      elif hasattr(fps, "__len__") and len(fps) == len(video_grid_thw):
-        second_per_grid_ts = [
-            self.video_processor.temporal_patch_size / tmp for tmp in fps]
-      else:
-        raise ValueError(
-            f"The length of fps ({len(fps) if hasattr(fps, '__len__') else fps}) must be equal to the length of video_grid_thw ({len(video_grid_thw)}) or fps should be a single number.")
-      videos_inputs.update({"second_per_grid_ts": second_per_grid_ts})
-
-    return BatchFeature(data={**image_inputs, **videos_inputs}, tensor_type=return_tensors)
-
-  def get_images_and_videos(self, messages, proc_args=None):
-    return [
-      val or None
-      for val in get_images_and_videos(messages, proc_args or self.proc_args)
-    ]
-
-  def _process_one(
-      self,
-      messages,
-      **kwargs,
-  ):
-    mode = kwargs.pop('mode', self.mode)
-    text_only = kwargs.pop('text_only', False)
-    add_generation_prompt = kwargs.pop(
-        'add_generation_prompt', self.add_generation_prompt)
-    add_vision_id = kwargs.pop('add_vision_id', self.add_vision_id)
-    sys_prompt = kwargs.pop('sys_prompt', self.sys_prompt)
-    proc_args = kwargs.pop('proc_args', self.proc_args)
-    use_chat_template = mode == 'ift'
-    assert not add_generation_prompt or use_chat_template, "add_generation_prompt can only be True if chat_template is True."
-    text = []
-    input_ids = []
-    labels = []
-    img_idx = 0
-    vid_idx = 0
-    tokenizer = self.tokenizer
-    
-    if text_only:
-      vision_features = BatchFeature()
-    else:
-      images, videos, fps = self.get_images_and_videos(messages, proc_args)
-
-      vision_features = self._process_vision(
-          images=images,
-          videos=videos,
-          fps=fps,
-          **kwargs
-      )
-
-    def add_text(m, role):
-      text.append(m)
-      tokenized_m = tokenizer.encode(m)
-      input_ids.extend(tokenized_m)
-      if role == 'assistant':
-        labels.extend(tokenized_m)
-      else:
-        labels.extend([self.ignore_idx] * len(tokenized_m))
-
-    def add_vision(vision_type, idx):
-      if not vision_type in ['image', 'video']:
-        raise ValueError("vision_type must be either 'image' or 'video'.")
-      m = ''
-      if add_vision_id:
-        m += f"{vision_type} {idx + 1}: "
-
-      m += f"{VISION_START}<|{vision_type}_pad|>{VISION_END}"
-      text.append(m)
-
-      if text_only:
-        vision_token_count = 1
-      else:
-        merge_size = getattr(self, f'{vision_type}_processor').merge_size ** 2
-        vision_token_count = vision_features[f'{vision_type}_grid_thw'][idx].prod(
-        ) // merge_size
-      vision_token_id = getattr(self, f'{vision_type}_token_id')
-      input_ids.append(self.vs_id)
-      input_ids.extend([vision_token_id] * vision_token_count)
-      input_ids.append(self.ve_id)
-      labels.extend([self.ignore_idx] * (vision_token_count + 2))
-      return idx + 1
-
-    if not use_chat_template:
-      add_text(f"{IM_START}\n", None)
-
-    if use_chat_template and messages[0]['role'] != 'system' and sys_prompt:
-      add_text(f"{IM_START}system\n{sys_prompt}{IM_END}\n", 'system')
-
-    for message in messages:
-      if use_chat_template:
-        # We don't want to calculate loss on the role tokens in chat templates.
-        add_text(f"{IM_START}{message['role']}\n", None)
-
-      if isinstance(message['content'], str):
-        add_text(f"{message['content']}{IM_END}\n", message['role'])
-        continue
-
-      if not isinstance(message['content'], list):
-        raise ValueError("Content must be a string or a list of dictionaries.")
-
-      for content in message['content']:
-        if 'image' in content:
-          img_idx = add_vision('image', img_idx)
-        elif 'video' in content:
-          vid_idx = add_vision('video', vid_idx)
-        elif 'text' in content:
-          add_text(content['text'], message['role'])
-
-      if use_chat_template:
-        add_text(f"{IM_END}\n", None)
-
-    if not use_chat_template:
-      add_text(f"{IM_END}\n", None)
-    if add_generation_prompt:
-      add_text(f"{IM_START}assistant\n", 'assistant')
-    text = ''.join(text)
-    be = BatchEncoding(data={
-        'input_ids': torch.tensor(input_ids),
-        'labels': torch.tensor(labels)})
-    return text, be, vision_features
-
-  def get_features_with_text(
-      self,
-      conversations,
-      **kwargs
-  ):
-    packed = kwargs.pop('packed', False)
-    padding = kwargs.pop('padding', True)
-    kwargs['return_tensors'] = 'pt'
-    output_kwargs = self._merge_kwargs(
-        Qwen2_5_VLProcessorKwargs,
-        tokenizer_init_kwargs=self.tokenizer.init_kwargs,
-        **kwargs,
-    )
-    batch_text_features = []
-    batch_features = BatchFeature()
-    batch_text = []
-
-    if isinstance(conversations[0], dict) or (packed and isinstance(conversations[0][0], dict)):
-      conversations = [conversations]
-
-    for messages in conversations:
-      if packed:
-        if not isinstance(messages[0], list):
-          raise ValueError("Packed conversations must be a list of lists.")
-        
-        messages = list(itertools.chain(*messages))
-      text, text_features, vision_features = self._process_one(
-          messages=messages,
-          **kwargs
-      )
-      batch_text_features.append(text_features)
-      for k, v in vision_features.items():
-        if k not in batch_features:
-          batch_features[k] = []
-        batch_features[k].append(v)
-      batch_text.append(text)
-
-    for k, v in batch_features.items():
-      batch_features[k] = torch.cat(v, dim=0)
-
-    target_length = max(
-        [len(feat['input_ids']) for feat in batch_text_features]
-    )
-    input_ids = [feat['input_ids'] for feat in batch_text_features]
-    attn_masks = [[1] * len(feat['input_ids']) for feat in batch_text_features]
-    labels = [feat['labels'] for feat in batch_text_features]
-    if padding:
-      input_ids, attn_masks = pad_and_stack_tensors(
-          tensors=[feat['input_ids'] for feat in batch_text_features],
-          target_length=target_length,
-          padding_value=self.tokenizer.pad_token_id,
-          **output_kwargs['text_kwargs'],
-      )
-      labels, _ = pad_and_stack_tensors(
-          tensors=[feat['labels'] for feat in batch_text_features],
-          target_length=target_length,
-          padding_value=self.ignore_idx,
-          **output_kwargs['text_kwargs'],
-      )
-    batch_features['input_ids'] = input_ids
-    batch_features['attention_mask'] = attn_masks
-    batch_features['labels'] = labels
-    return batch_text, batch_features
-
-  def __call__(
-      self,
-      conversations,
-      **kwargs
-  ):
-    return self.get_features_with_text(conversations, **kwargs)[1]
-  
-  
-  def make_prompt(
-      self,
-      conversations,
-      **kwargs,
-  ):
-    kwargs.pop('text_only', None)
-    return self.get_features_with_text(conversations, text_only=True, **kwargs)[0]
 
 
 if __name__ == '__main__':

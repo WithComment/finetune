@@ -2,65 +2,52 @@ from ..utils import get_logger
 
 logger = get_logger(__name__)
 
-from .base import BaseDataset
-from .sft import SFTDataset
-from .openbiomedvid import OpenbiomedvidDataset
-from .openpmc import OpenpmcDataset
-from .openpmc_tiny import OpenpmcTinyDataset
-from .openpmc_small import OpenpmcSmallDataset
+SYS_PROMPTS = {
+  'default': "You are a helpful assistant.",
+}
 
-from .benchmark import BenchmarkDataset
-from .fashion_mnist import FashionMnistDataset
-from .vqa import VQADataset
-from .surgeryvid import SurgeryVidDataset
+CFT_PROMPTS = {
+}
 
 avail_datasets = {
-  "path-vqa": {
+  "path_vqa": {
     "ds_dir": "/projects/cft_vlm/datasets/path_vqa/data/dataset",
     "media_dir": None,
-    "ds_class": VQADataset,
     "ds_key": "flaviagiammarino/path-vqa"
   },
-  "vqa-rad": {
+  "vqa_rad": {
     "ds_dir": "/projects/cft_vlm/datasets/vqa_rad/data/dataset",
     "media_dir": None,
-    "ds_class": VQADataset,
     "ds_key": "flaviagiammarino/vqa-rad"
   },
   "slake": {
     "ds_dir": "/projects/cft_vlm/datasets/slake/data/dataset",
     "media_dir": None,
-    "ds_class": VQADataset,
     "ds_key": "mdwiratathya/SLAKE-vqa-english"
   },
-  "surgery-vid": {
+  "surgeryvid": {
     "ds_dir": "/projects/cft_vlm/datasets/surgeryvid/data/dataset",
     "media_dir": "/projects/cft_vlm/datasets/surgeryvid/data/vid_processed",
-    "ds_class": SurgeryVidDataset,
     "ds_key": "withcomment/surgeryvid"
   },
-  "open-pmc": {
+  "open_pmc": {
     "ds_dir": "/projects/cft_vlm/datasets/open_pmc/data/dataset",
     "media_dir": None,
-    "ds_class": OpenpmcDataset,
     "ds_key": "vector-institute/open-pmc"
   },
-  "open-pmc-small": {
+  "open_pmc_small": {
     "ds_dir": "/projects/cft_vlm/datasets/open_pmc_small/data/dataset",
     "media_dir": None,
-    "ds_class": OpenpmcSmallDataset,
     "ds_key": "vector-institute/open-pmc"
   },
-  "open-pmc-tiny": {
+  "open_pmc_tiny": {
     "ds_dir": "/projects/cft_vlm/datasets/open_pmc_tiny/data/dataset",
     "media_dir": None,
-    "ds_class": OpenpmcTinyDataset,
     "ds_key": "vector-institute/open-pmc"
   },
   "openbiomedvid": {
     "ds_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/dataset",
     "media_dir": "/projects/cft_vlm/datasets/openbiomedvid/data/vid_processed",
-    "ds_class": OpenbiomedvidDataset,
     "ds_key": "withcomment/openbiomedvid"
   }
 }

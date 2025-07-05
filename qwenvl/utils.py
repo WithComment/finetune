@@ -17,11 +17,17 @@ def get_logger(name):
   console_handler.setLevel(logging.INFO)
   formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
   console_handler.setFormatter(formatter)
+  
+  if dist.is_initialized() and dist.get_rank() != 0:
+    # If not rank 0, set the logger to only log warnings and errors
+    logger.setLevel(logging.WARNING)
+    console_handler.setLevel(logging.WARNING)
 
   # Add handler to logger (avoid duplicate handlers)
   if not logger.handlers:
     logger.addHandler(console_handler)
-
+    
+  
   return logger
 
 

@@ -1,7 +1,6 @@
 from pathlib import Path
 import os
 import json
-import time
 from typing import Callable
 from tqdm import tqdm
 from transformers import AutoProcessor, AutoModel, Qwen2VLForConditionalGeneration, Qwen2_5_VLForConditionalGeneration
@@ -11,17 +10,16 @@ import torch
 import torch.distributed as dist
 import transformers
 
-from qwenvl.data.input_processor import InputProcessor
 from qwenvl.eval import comp_answer_basic, evaluate, yes_no_filter
 
 from .argument import DataArguments, ModelArguments, ProcessingArguments
-from .train import make_data_module, rank0_make_data_module, rank0_print, set_processor
+from .train import rank0_print, set_processor, create_datamodule
 from .utils import get_logger
-from .data import (
-    BenchmarkDataset
-)
-logger = get_logger(__name__)
+from .data import avail_datasets
+from .data.module import DatasetWrapper
 
+logger = get_logger(__name__)
+transformers.logging.set_verbosity_error()
 
 def log_header(
     model_path: str,
@@ -82,7 +80,7 @@ def load_pretrained_qwen(model_path, device):
 
 
 def get_gpu_indices(
-    benchmark: BenchmarkDataset,
+    benchmark: DatasetWrapper,
     world_size: int,
     local_rank: int,
     portion: float,
@@ -94,21 +92,28 @@ def get_gpu_indices(
   end_idx = start_idx + items_per_gpu
   return range(start_idx, end_idx)
 
+def drop_non_json_fields(item: dict) -> dict:
+  """Drop fields that are not JSON serializable."""
+  return {k: v for k, v in item.items() if isinstance(v, (str, int, float, bool, list, dict))}
 
 def _infer(
     model,
-    benchmark: BenchmarkDataset,
+    benchmark: DatasetWrapper,
     gpu_indices: list[dict],
     collate_fn: callable,
     gen_config: dict,
     processor: AutoProcessor,
 ) -> list[dict]:
   result = []
+  # logger.info(collate_fn([benchmark[gpu_indices[0]]]))
   for idx in tqdm(gpu_indices, disable=torch.distributed.get_rank() != 0):
-    item = benchmark[idx]
+    item = [benchmark[idx]]
     with torch.inference_mode():
+      input = collate_fn(item)
+      input.pop('labels', None)
+      input = input.to(model.device)
       output_ids = model.generate(
-          **collate_fn(item).to(model.device),
+          **input,
           **gen_config
       )
 
@@ -116,7 +121,7 @@ def _infer(
     for item, output in zip(item, outputs):
       output = output.split("assistant")[-1].strip().strip("\n")
       item['model_answer'] = output
-      result.append(benchmark.drop_non_json_fields(item))
+      result.append(drop_non_json_fields(item))
   return result
 
 
@@ -163,7 +168,8 @@ def generate_output(
     world_size: int,
     local_rank: int,
     output_dir: Path,
-    benchmark: BenchmarkDataset,
+    benchmark: DatasetWrapper,
+    processor: AutoProcessor,
     collate_fn: Callable,
     gen_config: dict,
     portion: float,
@@ -176,7 +182,7 @@ def generate_output(
       gpu_indices=get_gpu_indices(benchmark, world_size, local_rank, portion),
       collate_fn=collate_fn,
       gen_config=gen_config,
-      processor=benchmark.processor,
+      processor=processor,
   )
   save_gpu_result(gpu_result, local_rank, output_dir)
 
@@ -201,40 +207,31 @@ def predict(
 
   model, processor, model_path = load_pretrained_qwen(model_path, device)
   processor = set_processor(processor, proc_args, data_args)
-  processor = InputProcessor(
-      processor=processor,
-      proc_args=proc_args,
-      add_generation_prompt=True,
-      mode='ift'
-  )
-  data_module = rank0_make_data_module(
+  ds, collate_fn = create_datamodule(
       processor=processor,
       data_args=data_args,
       proc_args=proc_args,
-      for_training=False
   )
   if local_rank == 0:
     log_header(model_path, data_args, world_size, logger)
-
-  eval_dataset = data_module['eval_dataset']
-  collate_fn = data_module['data_collator']
   
   if model_path.name.startswith('checkpoint-'):
     checkpoint_name = '-'.join([model_path.parts[-2], model_path.name.split('-')[-1]])
   else:
     checkpoint_name = model_path.name
-  output_dir = eval_dataset.ds_dir.parent.parent / 'results' / data_args.split / checkpoint_name
+    
+  ds_dir = Path(avail_datasets[data_args.dataset_use]['ds_dir'])
+  output_dir = ds_dir.parent.parent / 'results' / data_args.split / checkpoint_name
   logger.info(f"Output directory: {output_dir}")
-  if data_args.sys_prompt == 'custom':
-    output_dir = output_dir / 'custom_sys_prompt'
   rank0_print(data_args)
   generate_output(
       model,
       world_size=world_size,
       local_rank=local_rank,
       output_dir=output_dir,
-      benchmark=eval_dataset,
+      benchmark=ds,
       collate_fn=collate_fn,
+      processor=processor,
       gen_config={
           'max_new_tokens': 64,
           "eos_token_id": [151645, 151643],

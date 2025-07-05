@@ -4,9 +4,9 @@ from typing import Callable
 import datasets
 from transformers import AutoProcessor
 from qwenvl.argument import DataArguments, ProcessingArguments
-from qwenvl.data.conversation import AllPromptAdder, ConversationMaker, ConversationProcessor, FirstPromptAdder, VQAConversationMaker
+from qwenvl.data.conversation import AllPromptAdder, ConversationMaker, ConversationProcessor, FirstPromptAdder, RolePromptAdder, VQAConversationMaker
 from qwenvl.data.input_processor import InputProcessor
-from qwenvl.data.preprocess import PreprocessStrategy, SaveStrategy, pack_dataset
+from qwenvl.data.preprocess import GetNumMediaTokensStrategy, GetNumTokensStrategy, PreprocessStrategy, SaveStrategy, pack_dataset
 from qwenvl.data import CFT_PROMPTS, SYS_PROMPTS, avail_datasets
 from qwenvl.utils import get_logger
 
@@ -18,10 +18,10 @@ class DatasetWrapper:
     self.ds = ds
     self.bins = bins
   
-  def __getitem__(self, idx: int) -> dict:
+  def __getitem__(self, idx: int) -> list[dict]:
     if self.bins is not None:
       return [self.ds[i] for i in self.bins[idx]]
-    return self.ds[idx]
+    return [self.ds[idx]]
   
   def __len__(self) -> int:
     if self.bins is not None:
@@ -34,13 +34,17 @@ def create_module(
     preprocess_strategies: list[PreprocessStrategy],
     cp: ConversationProcessor,
     ip: InputProcessor,
+    rank: int = 0
 ) -> tuple[DatasetWrapper, Callable[[list[dict]], dict]]:
   """
   Assembles everything, from arguments and dataset and preprocess strategies, into a module,
   as well as a collate function, that will be used directly for the trainer.
   """
   logger.info(f"Creating module for dataset {data_args.dataset_use} with split {data_args.split}")
-  ds = datasets.load_dataset(avail_datasets[data_args.dataset_use]['ds_key'])
+  if rank == 0:
+    ds = datasets.load_dataset(avail_datasets[data_args.dataset_use]['ds_key'])
+  else:
+    ds = datasets.load_from_disk(avail_datasets[data_args.dataset_use]['ds_dir'])
   
   for strategy in preprocess_strategies:
     ds = strategy(ds)
@@ -57,11 +61,12 @@ def create_module(
   def collate_fn(batch):
     conv = [cp(item) for item in batch]
     return ip(conv)
-  example = random.choice(ds)
+  example = random.choice(ds)[:1]
   conv = cp(example)
   text = ip.get_text(conv, text_only=True)
+  
   logger.info(f"Example from dataset: {example}")
-  logger.info(f"Example after conversation processing: {cp(example)}")
+  logger.info(f"Example after conversation processing: {conv}")
   logger.info(f"Example after input processing: {text}")
   
   logger.info(f"Finished creating data module.")
@@ -92,8 +97,9 @@ def create_strategies(
     modifiers.append(AllPromptAdder(cft_prompts))
   else:
     logger.warning(f"CFT prompt {proc_args.cft_prompt} not found, not using it.")
-    
-  modifiers.append(AllPromptAdder(["Answer straightforwardly and concisely: "], role='user'))
+  
+  if data_args.split != 'train':
+    modifiers.append(RolePromptAdder(["Answer straightforwardly and concisely: "], idx=1, role='user'))
     
   if proc_args.sys_prompt and proc_args.sys_prompt in SYS_PROMPTS:
     sys_prompt = SYS_PROMPTS[proc_args.sys_prompt]
@@ -105,13 +111,17 @@ def create_strategies(
       conversation_modifiers=modifiers,
   )
   
-  preprocess_strategies = []
-  if rank == 0:
-    preprocess_strategies.append(SaveStrategy(ds_config['ds_dir']))
-  
   ip = InputProcessor(
       processor=processor,
       config=proc_args,
   )
+  
+  preprocess_strategies = []
+  if rank == 0:
+    preprocess_strategies = [
+        GetNumMediaTokensStrategy(get_content_fn=cp.get_content, config=proc_args),
+        GetNumTokensStrategy(cm=cp, processor=ip),
+        SaveStrategy(ds_config['ds_dir'], ds_config['ds_dir']),
+    ]
   
   return preprocess_strategies, cp, ip

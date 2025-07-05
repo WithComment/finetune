@@ -107,9 +107,10 @@ def _infer(
   result = []
   # logger.info(collate_fn([benchmark[gpu_indices[0]]]))
   for idx in tqdm(gpu_indices, disable=torch.distributed.get_rank() != 0):
-    item = [benchmark[idx]]
+    # Turn into a batch of size 1
+    batch = [benchmark[idx]]
     with torch.inference_mode():
-      input = collate_fn(item)
+      input = collate_fn(batch)
       input.pop('labels', None)
       input = input.to(model.device)
       output_ids = model.generate(
@@ -118,8 +119,10 @@ def _infer(
       )
 
     outputs = processor.tokenizer.batch_decode(output_ids, skip_special_tokens=True)
-    for item, output in zip(item, outputs):
+    for item, output in zip(batch, outputs):
       output = output.split("assistant")[-1].strip().strip("\n")
+      # Unpack item.
+      item = item[0]
       item['model_answer'] = output
       result.append(drop_non_json_fields(item))
   return result

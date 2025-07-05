@@ -304,7 +304,7 @@ class InputProcessor(ProcessorMixin):
     return self.get_features_with_text(conversations, text_only, **kwargs)[0]
   
   
-  def get_text_length(
+  def get_num_text_tokens(
       self,
       conversation,
       **kwargs,

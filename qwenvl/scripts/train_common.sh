@@ -37,12 +37,11 @@ setup_environment() {
     export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
     export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 }
-
 # Common model arguments
 get_model_args() {
-    local base_model=${1:-"Qwen/Qwen2.5-VL-3B-Instruct"}
+    local model_name_or_path=${1:-"Qwen/Qwen2.5-VL-3B-Instruct"}
     echo "
-    --model_name_or_path ${base_model} \
+    --model_name_or_path ${model_name_or_path} \
     --tune_mm_vision False \
     --tune_mm_mlp True \
     --tune_mm_llm True"
@@ -51,15 +50,19 @@ get_model_args() {
 # Common data arguments
 get_data_args() {
     local dataset_use=$1
-    local mode=$2
     echo "
     --dataset_use ${dataset_use} \
-    --data_packing True \
-    --mode ${mode} \
+    --packing True \
     --split train \
-    --model_max_length 8192 \
-    --num_proc 24 \
-    --force False"
+    --model_max_length 16384 \
+    --portion 1.0"
+}
+
+get_proc_args() {
+    local cft_prompt=$1
+    echo "
+    --use_chat_template True \
+    --cft_prompt \"${cft_prompt}\""
 }
 
 # Base training arguments
@@ -78,7 +81,7 @@ get_base_train_args() {
     --lr_scheduler_type cosine_with_min_lr \
     --min_lr_ratio 0.1 \
     --save_strategy steps \
-    --save_steps 0.2 \
+    --save_steps 0.5 \
     --learning_rate 1e-5 \
     --weight_decay 0.01 \
     --warmup_ratio 0.01 \
@@ -93,46 +96,44 @@ get_base_train_args() {
 # Common training execution
 run_training() {
     local dataset_use=$1
-    local mode=$2
+    local cft_prompt=$2
     local requeue=$3
-    local base_model=$4
+    local model_name_or_path=$4
 
-    local run_name="${base_model}-${dataset_use}-${mode}"
+    # Compose run_name: stem is dataset_use, append "-cft" if cft_prompt is not empty
+    local run_name="${dataset_use}"
+    if [[ -n "${cft_prompt}" ]]; then
+        run_name="${run_name}-cft"
+    fi
     local output_dir="/projects/cft_vlm/.checkpoint/${run_name}"
-    
+
     # Create output directory
-    mkdir -p ${output_dir}
-    
+    mkdir -p "${output_dir}"
+
     # Get all arguments
-    local model_args=$(get_model_args "$base_model")
-    local data_args=$(get_data_args "$dataset_use" "$mode")
-    local proc_args=""
-    local train_args=$(get_base_train_args "$output_dir" "$run_name")
-    
+    local model_args
+    model_args=$(get_model_args "${model_name_or_path}")
+    local data_args
+    data_args=$(get_data_args "${dataset_use}")
+    local proc_args
+    proc_args=$(get_proc_args "${cft_prompt}")
+    local train_args
+    train_args=$(get_base_train_args "${output_dir}" "${run_name}")
+
     local args=" \
         ${model_args} \
         ${data_args} \
         ${proc_args} \
         ${train_args}"
-    
-    # Count tokens
-    python -m qwenvl.data.count_tokens ${model_args} ${data_args} ${proc_args}
-    
-    if [ $? -ne 0 ]; then
-        echo "Token counting failed. Exiting."
-        exit 1
-    fi
-    
+
     echo "Starting training process in the background..."
-    # Run torchrun in the background and save its PID
-    torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args} &
+    torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args}
     PROC_ID=$!
-    
-    # Wait for process and handle exit
+
     echo "Waiting for process $PROC_ID. The script can now receive signals."
     wait $PROC_ID
     EXIT_CODE=$?
-    
+
     if [ $EXIT_CODE -ne 0 ]; then
         if [ "$requeue" = false ]; then
             echo "Training failed with exit code $EXIT_CODE, not requeuing job."
@@ -147,9 +148,10 @@ run_training() {
 
 setup_environment
 
-dataset_use=$1
-mode=${2}
-requeue=${3:-true}
-base_model=${4:-"Qwen/Qwen2.5-VL-3B-Instruct"}
+# Allow easy override of key parameters
+dataset_use=${1}
+cft_prompt=${2:-""}
+requeue=${3:-false}
+model_name_or_path=${4:-"Qwen/Qwen2.5-VL-3B-Instruct"}
 
-run_training "$dataset_use" "$mode" "$requeue" "$base_model"
+run_training "$dataset_use" "$cft_prompt" "$requeue" "$model_name_or_path"

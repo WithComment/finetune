@@ -112,6 +112,7 @@ def create_datamodule(
         preprocess_strategies=preprocess_strategies,
         cp=cp,
         ip=ip,
+        rank=rank,
     )
   dist.barrier()
   if rank != 0:
@@ -120,6 +121,7 @@ def create_datamodule(
         preprocess_strategies=preprocess_strategies,
         cp=cp,
         ip=ip,
+        rank=rank,
     )
   return ds, collate_fn
 
@@ -177,7 +179,7 @@ def train(attn_implementation="flash_attention_2"):
       args=training_args,
       callbacks=[PruneOldStateCallback],
       train_dataset=ds,
-      collate_fn=collate_fn,
+      data_collator=collate_fn,
   )
   rank0_print(f"Trainer save_strategy: {trainer.args.save_strategy, trainer.args.save_steps, trainer.args.save_total_limit}")
 

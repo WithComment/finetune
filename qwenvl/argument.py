@@ -27,7 +27,7 @@ class DataArguments:
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
   cache_dir: Optional[str] = field(default=None)
-  optim: str = field(default="adamw_torch")
+  optim: str = field(default="adamw_bnb_8bit")
   mm_projector_lr: Optional[float] = None
   vision_tower_lr: Optional[float] = None
   min_lr_ratio: Optional[float] = field(default=0.1, metadata={"help": "Minimum learning rate ratio for cosine_with_min_lr scheduler"})
@@ -50,7 +50,7 @@ class ProcessingArguments:
   base_interval: int = field(default=1)
   temporal_patch_size: int = field(default=2, metadata={"help": "Temporal patch size for video processing"})
   
-  sys_prompt: str = field(default='default')
+  sys_prompt: str = field(default='')
   cft_prompt: str = field(default='')
   use_chat_template: bool = field(default=False, metadata={"help": "Use chat template for text input"})
   add_generation_prompt: bool = field(default=False, metadata={"help": "Add generation prompt to text input"})

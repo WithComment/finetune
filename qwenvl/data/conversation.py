@@ -7,12 +7,12 @@ class ConversationMaker(ABC):
   '''Abstract base class for creating conversation from an item in a dataset.'''
 
   @abstractmethod
-  def __call__(self, item: dict[str, Any]) -> tuple[list, list[dict[str, Any]]]:
-    '''Create a conversation from an item in a dataset.
+  def __call__(self, item: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    '''Create a conversation from a list of items in a dataset.
     '''
     pass
   
-  def get_content(self, item: dict[str, Any]):
+  def get_content(self, item: list[dict[str, Any]]):
     conv = self(item)
     texts, images, videos = [], [], []
     for message in conv:
@@ -114,6 +114,23 @@ class AllPromptAdder(ConversationModifier):
     return conversation
 
 
+class RolePromptAdder(ConversationModifier):
+  '''
+  Adds a user prompt to the conversation.
+  
+  Args:
+    user_prompt: The user prompt to add.
+  '''
+  
+  def __call__(self, conversation: list[list[dict[str, Any]]]) -> list[list[dict[str, Any]]]:
+    for i in range(len(conversation)):
+      user_prompt = random.choice(self.prompts)
+      for message in conversation[i]:
+        if message['role'] == self.role:
+          message['content'].insert(self.idx, {'text': user_prompt})
+          break
+    return conversation
+
 class ConversationProcessor(ConversationMaker):
   """Handles both one item or a list of items."""
   def __init__(
@@ -124,18 +141,19 @@ class ConversationProcessor(ConversationMaker):
     self.maker = conversation_maker
     self.modifiers = conversation_modifiers
   
-  def __call__(self, item: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:
+  def __call__(self, item: list[dict[str, Any]]) -> list[dict[str, Any]]:
     '''
-    Create a conversation from an item or a list of items in a dataset and apply modifiers.
+    Create a conversation from a list of items in a dataset and apply modifiers.
     
     Args:
-      item: A dictionary representing an item in the dataset or a list of such items.
+      item: A dictionary representing a list of items in a dataset.
       
     Returns:
       A conversation with modifications such as system prompt.
     '''
-    if isinstance(item, dict):
-      item = [item]
+    if not isinstance(item, list):
+      raise ValueError(f"Input item must be a list of dictionaries, got {item} instead.")
+    
     conversation = [self.maker(i) for i in item]
     for modifier in self.modifiers:
       conversation = modifier(conversation)

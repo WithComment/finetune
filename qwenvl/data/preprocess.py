@@ -61,7 +61,7 @@ class GetNumMediaTokensStrategy(PreprocessStrategy):
         num_tokens += h_tokens * w_tokens * nframes // self.config.temporal_patch_size
     except Exception as e:
       logger.error(e)
-      texts, images, videos = [], []
+      images, videos = [], []
       num_tokens = 0
 
     item['num_media'] = len(images) + len(videos)
@@ -93,9 +93,9 @@ class GetNumTokensStrategy(PreprocessStrategy):
     self.processor = processor
     
   def get_num_tokens(self, item):
-    tokens = self.processor.get_text_length(self.cm(item))
+    num_text_tokens = self.processor.get_num_text_tokens(self.cm(item))
     num_media = item['num_media']
-    item['num_tokens'] = len(tokens) - num_media + item['num_media_tokens']
+    item['num_tokens'] = num_text_tokens - num_media + item['num_media_tokens']
     return item
   
   def __call__(self, ds: datasets.Dataset):

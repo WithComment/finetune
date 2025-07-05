@@ -39,8 +39,8 @@ dataset_use=$1
 model_use=${2:-"Qwen/Qwen2.5-VL-3B-Instruct"}
 split=${3:-"test"}
 portion=${4:-1.0}
-sys_prompt=${5:default}
-requeue=${6:-true}
+sys_prompt=${5:-default}
+requeue=${6:-false}
 
 eval_args="
   --model_name_or_path ${model_use}"

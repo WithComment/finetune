@@ -93,7 +93,7 @@ class GetNumTokensStrategy(PreprocessStrategy):
     self.processor = processor
     
   def get_num_tokens(self, item):
-    num_text_tokens = self.processor.get_num_text_tokens(self.cm(item))
+    num_text_tokens = self.processor.get_num_text_tokens(self.cm([item]))
     num_media = item['num_media']
     item['num_tokens'] = num_text_tokens - num_media + item['num_media_tokens']
     return item
@@ -163,4 +163,8 @@ def pack_dataset(ds: datasets.Dataset, bin_capacity: int):
   logger.info("Packing dataset into bins.")
   bins = fast_best_fit_decreasing(ds['num_tokens'], bin_capacity)
   logger.info(f"Packed dataset into {len(bins)} bins.")
+  
+  logger.info(f"|   Max samples per bin: {max(len(bin) for bin in bins)}")
+  logger.info(f"|   Min samples per bin: {min(len(bin) for bin in bins)}")
+  logger.info(f"|   Average samples per bin: {len(ds) / len(bins) if bins else 0:.2f}")
   return bins

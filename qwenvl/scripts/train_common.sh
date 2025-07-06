@@ -47,12 +47,12 @@ get_model_args() {
     --tune_mm_llm True"
 }
 
-# Common data arguments
 get_data_args() {
     local dataset_use=$1
+    local packing=$2
     echo "
     --dataset_use ${dataset_use} \
-    --packing True \
+    --packing ${packing} \
     --split train \
     --model_max_length 16384 \
     --portion 1.0"
@@ -60,9 +60,15 @@ get_data_args() {
 
 get_proc_args() {
     local cft_prompt=$1
-    echo "
-    --use_chat_template True \
-    --cft_prompt \"${cft_prompt}\""
+    local use_chat_template=$2
+    local args="--use_chat_template ${use_chat_template}"
+    
+    # Only add cft_prompt if it's not empty
+    if [[ -n "${cft_prompt}" ]]; then
+        args="${args} --cft_prompt ${cft_prompt}"
+    fi
+    
+    echo "${args}"
 }
 
 # Base training arguments
@@ -75,8 +81,8 @@ get_base_train_args() {
     --output_dir ${output_dir} \
     --bf16 \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --gradient_accumulation_steps 8 \
+    --per_device_train_batch_size 8 \
+    --gradient_accumulation_steps 1 \
     --eval_strategy no \
     --lr_scheduler_type cosine_with_min_lr \
     --min_lr_ratio 0.1 \
@@ -88,17 +94,20 @@ get_base_train_args() {
     --max_grad_norm 1 \
     --logging_steps 1 \
     --gradient_checkpointing True \
-    --dataloader_num_workers 4 \
+    --dataloader_num_workers 1 \
     --run_name ${run_name} \
     --report_to wandb"
 }
 
 # Common training execution
+
 run_training() {
     local dataset_use=$1
     local cft_prompt=$2
     local requeue=$3
     local model_name_or_path=$4
+    local packing=$5
+    local use_chat_template=$6
 
     # Compose run_name: stem is dataset_use, append "-cft" if cft_prompt is not empty
     local run_name="${dataset_use}"
@@ -114,9 +123,9 @@ run_training() {
     local model_args
     model_args=$(get_model_args "${model_name_or_path}")
     local data_args
-    data_args=$(get_data_args "${dataset_use}")
+    data_args=$(get_data_args "${dataset_use}" "${packing}")
     local proc_args
-    proc_args=$(get_proc_args "${cft_prompt}")
+    proc_args=$(get_proc_args "${cft_prompt}" "${use_chat_template}")
     local train_args
     train_args=$(get_base_train_args "${output_dir}" "${run_name}")
 
@@ -127,7 +136,7 @@ run_training() {
         ${train_args}"
 
     echo "Starting training process in the background..."
-    torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args}
+    torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args} &
     PROC_ID=$!
 
     echo "Waiting for process $PROC_ID. The script can now receive signals."
@@ -148,10 +157,85 @@ run_training() {
 
 setup_environment
 
-# Allow easy override of key parameters
-dataset_use=${1}
-cft_prompt=${2:-""}
-requeue=${3:-false}
-model_name_or_path=${4:-"Qwen/Qwen2.5-VL-3B-Instruct"}
 
-run_training "$dataset_use" "$cft_prompt" "$requeue" "$model_name_or_path"
+# Parse positional and keyword arguments
+dataset_use=""
+cft_prompt=""
+# lower case for bash.
+requeue="false"
+model_name_or_path="Qwen/Qwen2.5-VL-3B-Instruct"
+# Must be uppercase for python.
+packing="True"
+use_chat_template="True"
+
+while [[ $# -gt 0 ]]; do
+    key="$1"
+    case $key in
+        --dataset_use)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --dataset_use requires a value"
+                exit 1
+            fi
+            dataset_use="$2"
+            shift 2
+            ;;
+        --cft_prompt)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --cft_prompt requires a value"
+                exit 1
+            fi
+            cft_prompt="$2"
+            shift 2
+            ;;
+        --requeue)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --requeue requires a value"
+                exit 1
+            fi
+            requeue="$2"
+            shift 2
+            ;;
+        --model_name_or_path)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --model_name_or_path requires a value"
+                exit 1
+            fi
+            model_name_or_path="$2"
+            shift 2
+            ;;
+        --packing)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --packing requires a value"
+                exit 1
+            fi
+            packing="$2"
+            shift 2
+            ;;
+        --use_chat_template)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --use_chat_template requires a value"
+                exit 1
+            fi
+            use_chat_template="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown argument: $1"
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "${dataset_use}" ]]; then
+    echo "Error: --dataset_use is required."
+    exit 1
+fi
+
+echo "Debug: dataset_use='$dataset_use'"
+echo "Debug: cft_prompt='$cft_prompt'"
+echo "Debug: requeue='$requeue'"
+echo "Debug: model_name_or_path='$model_name_or_path'"
+echo "Debug: packing='$packing'"
+echo "Debug: use_chat_template='$use_chat_template'"
+
+run_training "$dataset_use" "$cft_prompt" "$requeue" "$model_name_or_path" "$packing" "$use_chat_template"

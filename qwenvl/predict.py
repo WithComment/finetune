@@ -47,15 +47,13 @@ def _load_model_and_processor(
         torch_dtype=torch.float16,
         attn_implementation="flash_attention_2"
     )
-  elif 'Qwen2.5-VL' in model_path:
+  else:
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         model_path,
         device_map={"": device},
         torch_dtype=torch.float16,
         attn_implementation="flash_attention_2"
     )
-  else:
-    raise ValueError(f"Unsupported model type: {model_path}")
   processor = AutoProcessor.from_pretrained(model_path)
   return model, processor
 
@@ -84,13 +82,14 @@ def get_gpu_indices(
     world_size: int,
     local_rank: int,
     portion: float,
+    batch_size: int,
 ) -> range:
   """Split the benchmark across multiple GPUs."""
   total = int(len(benchmark) * portion)
   items_per_gpu = total // world_size
   start_idx = local_rank * items_per_gpu
   end_idx = start_idx + items_per_gpu
-  return range(start_idx, end_idx)
+  return range(start_idx, end_idx, batch_size)
 
 def drop_non_json_fields(item: dict) -> dict:
   """Drop fields that are not JSON serializable."""
@@ -103,12 +102,13 @@ def _infer(
     collate_fn: callable,
     gen_config: dict,
     processor: AutoProcessor,
+    batch_size: int,
 ) -> list[dict]:
   result = []
   # logger.info(collate_fn([benchmark[gpu_indices[0]]]))
   for idx in tqdm(gpu_indices, disable=torch.distributed.get_rank() != 0):
     # Turn into a batch of size 1
-    batch = [benchmark[idx]]
+    batch = benchmark[idx:idx + batch_size]
     with torch.inference_mode():
       input = collate_fn(batch)
       input.pop('labels', None)
@@ -176,16 +176,18 @@ def generate_output(
     collate_fn: Callable,
     gen_config: dict,
     portion: float,
+    batch_size: int,
 ) -> None:
   output_dir.mkdir(parents=True, exist_ok=True)
 
   gpu_result = _infer(
       model,
       benchmark,
-      gpu_indices=get_gpu_indices(benchmark, world_size, local_rank, portion),
+      gpu_indices=get_gpu_indices(benchmark, world_size, local_rank, portion, batch_size),
       collate_fn=collate_fn,
       gen_config=gen_config,
       processor=processor,
+      batch_size=batch_size,
   )
   save_gpu_result(gpu_result, local_rank, output_dir)
 
@@ -235,6 +237,7 @@ def predict(
       benchmark=ds,
       collate_fn=collate_fn,
       processor=processor,
+      batch_size=data_args.eval_batch_size,
       gen_config={
           'max_new_tokens': 64,
           "eos_token_id": [151645, 151643],

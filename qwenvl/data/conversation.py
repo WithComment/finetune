@@ -152,7 +152,7 @@ class ConversationProcessor(ConversationMaker):
       A conversation with modifications such as system prompt.
     '''
     if not isinstance(item, list):
-      raise ValueError(f"Input item must be a list of dictionaries, got {item} instead.")
+      item = [item]
     
     conversation = [self.maker(i) for i in item]
     for modifier in self.modifiers:

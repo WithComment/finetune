@@ -48,7 +48,8 @@ model_args="
 data_args="
     --dataset_use ${dataset_use} \
     --split ${split} \
-    --portion ${portion}"
+    --portion ${portion} \
+    --eval_batch_size 1"
 
 proc_args="
     --sys_prompt ${sys_prompt} \

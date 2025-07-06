@@ -19,14 +19,12 @@ class DatasetWrapper:
     self.bins = bins
   
   def __getitem__(self, idx: int) -> list[dict]:
-    if self.bins is not None:
-      return [self.ds[i] for i in self.bins[idx]]
-    return [self.ds[idx]]
+    if isinstance(idx, slice):
+      return [[self.ds[i] for i in _bin] for _bin in self.bins[idx]]
+    return [self.ds[i] for i in self.bins[idx]]
   
   def __len__(self) -> int:
-    if self.bins is not None:
-      return len(self.bins)
-    return len(self.ds)
+    return len(self.bins)
 
 
 def create_module(
@@ -54,16 +52,18 @@ def create_module(
   if data_args.packing:
     bins = pack_dataset(ds, data_args.model_max_length)
   else:
-    bins = None
-    
+    bins = [[i] for i in range(len(ds))]
+  
   ds = DatasetWrapper(ds, bins)
   
   def collate_fn(batch):
     conv = [cp(item) for item in batch]
     return ip(conv)
+  
   example = random.choice(ds)[:1]
   conv = cp(example)
   text = ip.get_text(conv, text_only=True)
+  
   
   logger.info(f"Example from dataset: {example}")
   logger.info(f"Example after conversation processing: {conv}")
@@ -97,6 +97,7 @@ def create_strategies(
     modifiers.append(AllPromptAdder(cft_prompts))
   else:
     logger.warning(f"CFT prompt {proc_args.cft_prompt} not found, not using it.")
+    logger.warning(f"Available CFT prompts: {list(CFT_PROMPTS.keys())}")
   
   if data_args.split != 'train':
     modifiers.append(RolePromptAdder(["Answer straightforwardly and concisely: "], idx=1, role='user'))
@@ -118,10 +119,12 @@ def create_strategies(
   
   preprocess_strategies = []
   if rank == 0:
-    preprocess_strategies = [
-        GetNumMediaTokensStrategy(get_content_fn=cp.get_content, config=proc_args),
-        GetNumTokensStrategy(cm=cp, processor=ip),
-        SaveStrategy(ds_config['ds_dir'], ds_config['ds_dir']),
-    ]
+    if data_args.packing:
+      preprocess_strategies.append(GetNumMediaTokensStrategy(
+          get_content_fn=cp.get_content,
+          config=proc_args,
+      ))
+      preprocess_strategies.append(GetNumTokensStrategy(cm=cp, processor=ip))
+    preprocess_strategies.append(SaveStrategy(ds_config['ds_dir'], ds_config['ds_dir']))
   
   return preprocess_strategies, cp, ip

@@ -22,6 +22,7 @@ class DataArguments:
   split: str = field(default="train")
   model_max_length: int = field(default=16384)
   portion: float = field(default=1.0)
+  eval_batch_size: int = field(default=1, metadata={"help": "Batch size for evaluation."})
 
 
 @dataclass

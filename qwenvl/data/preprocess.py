@@ -27,6 +27,35 @@ class PreprocessStrategy(ABC):
     pass
 
 
+class VerifyMediaStrategy(PreprocessStrategy):
+  def __init__(self, get_content_fn: Callable, config: ProcessingArguments, **kwargs):
+    super().__init__(**kwargs)
+    self.get_content_fn = get_content_fn
+    self.config = config
+
+  def verify_media(self, item):
+    try:
+      texts, images, videos = self.get_content_fn(item)
+      for img in images:
+        get_image(img)
+      for vid in videos:
+        get_video_frames(vid, vid_proc_args=self.config, is_checking=True)
+    except Exception as e:
+      logger.error(e)
+      return False
+    return True
+
+  def __call__(self, ds: datasets.Dataset):
+    """
+    Verify media content in the dataset.
+    Content are defined by the `get_content` method.
+    """
+    return ds.filter(
+      self.verify_media,
+      num_proc=self.num_proc,
+      desc="Verifying media content",
+    )
+
 class GetNumMediaTokensStrategy(PreprocessStrategy):
   
   def __init__(self, get_content_fn: Callable, config: ProcessingArguments, **kwargs):
@@ -50,7 +79,7 @@ class GetNumMediaTokensStrategy(PreprocessStrategy):
         num_tokens += h_tokens * w_tokens
 
       for vid in videos:
-        vid, fps = get_video_frames(vid, self.config)
+        vid, fps = get_video_frames(vid, self.config, is_counting=True)
         nframes = vid.shape[0]
         frame = vid[:1]
         h, w, h_tokens, w_tokens = smart_resize(
@@ -62,7 +91,7 @@ class GetNumMediaTokensStrategy(PreprocessStrategy):
     except Exception as e:
       logger.error(e)
       images, videos = [], []
-      num_tokens = 0
+      num_tokens = -1
 
     item['num_media'] = len(images) + len(videos)
     item['num_media_tokens'] = num_tokens
@@ -73,7 +102,7 @@ class GetNumMediaTokensStrategy(PreprocessStrategy):
     Get the number of content tokens.
     Content are defined by the `get_content` method.
     """
-
+    logger.info("Counting media tokens in the dataset.")
     return ds.map(
       self.get_num_content_tokens,
       num_proc=self.num_proc,
@@ -100,6 +129,7 @@ class GetNumTokensStrategy(PreprocessStrategy):
   
   def __call__(self, ds: datasets.Dataset):
 
+    logger.info("Counting total tokens for item.")
     return ds.map(
         self.get_num_tokens,
         num_proc=self.num_proc,
@@ -141,17 +171,23 @@ class SaveStrategy(PreprocessStrategy):
 
   def __call__(self, ds: datasets.Dataset):
     logger.info(f"Saving dataset to {self.save_path}.")
-    if self.save_path.exists() and not self.exists_ok:
-      raise FileExistsError(f"Dataset already exists at {self.save_path}. Use `exists_ok=True` to overwrite.")
-    self.save_path.mkdir(parents=True, exist_ok=True)
-    if self.save_path.exists():
+    if not self.save_path.exists():
+      ds.save_to_disk(self.save_path)
+    else:
+      old_ds = datasets.load_from_disk(self.save_path)
+      for split in ds:
+        if split not in old_ds or ds[split]._fingerprint != old_ds[split]._fingerprint:
+          logger.info(f"Dataset split '{split}' DNE or has changed. Overwriting.")
+          break
+      else:
+        logger.info(f"Dataset already exists at {self.save_path} and is unchanged. Skipping save.")
+        return ds
+
       ds.save_to_disk(self.temp_path)
       logger.info(f"Temporary dataset saved to {self.temp_path}.")
       shutil.rmtree(self.save_path)
       logger.info(f"Removed existing dataset at {self.save_path}.")
       shutil.move(self.temp_path, self.save_path)
-    else:
-      ds.save_to_disk(self.save_path)
     logger.info(f"Dataset saved to {self.save_path}.")
     return ds
   

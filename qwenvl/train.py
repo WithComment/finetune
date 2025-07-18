@@ -23,7 +23,7 @@ import transformers
 import torch
 import torch.distributed as dist
 
-from qwenvl.data.module import create_strategies, create_module
+from qwenvl.module import create_strategies, create_module
 
 from .utils import PruneOldStateCallback, get_logger, print_trainable_parameters, print_trainable_parameters_visual, rank0_print
 
@@ -125,13 +125,8 @@ def create_datamodule(
     )
   return ds, collate_fn
 
-
 def train(attn_implementation="flash_attention_2"):
-  if dist.is_initialized():
-    rank = dist.get_rank()
-    world_size = dist.get_world_size()
-    logger.info(f"Hello from Slurm! Rank {rank}/{world_size}")
-
+  
   parser = transformers.HfArgumentParser((
       ModelArguments,
       DataArguments,

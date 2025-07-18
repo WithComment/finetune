@@ -5,6 +5,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH -c 32
 #SBATCH --qos=m
+#SBATCH -x gpu035
 #SBATCH --gres=gpu:4
 #SBATCH --partition=a40
 #SBATCH --open-mode=append
@@ -15,6 +16,8 @@
 #SBATCH --time=12:00:00
 #SBATCH --signal=B:USR1@60
 #SBATCH --signal=B:TERM@60
+
+date;hostname;pwd
 
 # Common setup function
 setup_environment() {
@@ -35,11 +38,14 @@ setup_environment() {
     export CUDA_HOME=/pkgs/cuda-12.4
     export PATH=$CUDA_HOME/bin:$PATH
     export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+    gpu_count=${SLURM_GPUS_ON_NODE:-$SLURM_NTASKS_PER_NODE}
     export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    export CUDA_LAUNCH_BLOCKING=1
+    export TORCH_CUDA_USE_DSA=1
 }
 # Common model arguments
 get_model_args() {
-    local model_name_or_path=${1:-"Qwen/Qwen2.5-VL-3B-Instruct"}
+    local model_name_or_path=$1
     echo "
     --model_name_or_path ${model_name_or_path} \
     --tune_mm_vision False \
@@ -54,7 +60,7 @@ get_data_args() {
     --dataset_use ${dataset_use} \
     --packing ${packing} \
     --split train \
-    --model_max_length 16384 \
+    --model_max_length  8192\
     --portion 1.0"
 }
 
@@ -86,15 +92,13 @@ get_base_train_args() {
     --eval_strategy no \
     --lr_scheduler_type cosine_with_min_lr \
     --min_lr_ratio 0.1 \
-    --save_strategy steps \
-    --save_steps 0.5 \
     --learning_rate 1e-5 \
     --weight_decay 0.01 \
-    --warmup_ratio 0.01 \
+    --warmup_ratio 0 \
     --max_grad_norm 1 \
     --logging_steps 1 \
     --gradient_checkpointing True \
-    --dataloader_num_workers 1 \
+    --dataloader_num_workers 4 \
     --run_name ${run_name} \
     --report_to wandb"
 }
@@ -114,6 +118,8 @@ run_training() {
     if [[ -n "${cft_prompt}" ]]; then
         run_name="${run_name}-cft"
     fi
+    local model_stem=$(basename "${model_name_or_path}")
+    run_name="${model_stem}-${run_name}"
     local output_dir="/projects/cft_vlm/.checkpoint/${run_name}"
 
     # Create output directory
@@ -182,6 +188,22 @@ while [[ $# -gt 0 ]]; do
         --cft_prompt)
             if [[ $# -lt 2 ]]; then
                 echo "Error: --cft_prompt requires a value"
+                exit 1
+            fi
+            cft_prompt="$2"
+            shift 2
+            ;;
+        --sys_prompt)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --sys_prompt requires a value"
+                exit 1
+            fi
+            cft_prompt="$2"
+            shift 2
+            ;;
+        --rst_prompt)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --rst_prompt requires a value"
                 exit 1
             fi
             cft_prompt="$2"

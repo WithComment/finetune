@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 import os
 import json
@@ -10,13 +11,13 @@ import torch
 import torch.distributed as dist
 import transformers
 
-from qwenvl.eval import comp_answer_basic, evaluate, yes_no_filter
+from qwenvl.eval import chexpert_filter, comp_answer_basic, evaluate, yes_no_filter
 
 from .argument import DataArguments, ModelArguments, ProcessingArguments
 from .train import rank0_print, set_processor, create_datamodule
 from .utils import get_logger
 from .data import avail_datasets
-from .data.module import DatasetWrapper
+from .module import DatasetWrapper
 
 logger = get_logger(__name__)
 transformers.logging.set_verbosity_error()
@@ -204,13 +205,14 @@ def predict(
 ):
   """Run inference on the benchmark using Qwen2-VL."""
   
-  dist.init_process_group(backend="nccl")
+  dist.init_process_group(backend="nccl", timeout=timedelta(hours=1))
 
   world_size = dist.get_world_size()
   local_rank = dist.get_rank()
   device = f"cuda:{local_rank}"
 
   model, processor, model_path = load_pretrained_qwen(model_path, device)
+  proc_args.padding_side = 'left'
   processor = set_processor(processor, proc_args, data_args)
   ds, collate_fn = create_datamodule(
       processor=processor,
@@ -227,6 +229,8 @@ def predict(
     
   ds_dir = Path(avail_datasets[data_args.dataset_use]['ds_dir'])
   output_dir = ds_dir.parent.parent / 'results' / data_args.split / checkpoint_name
+  if proc_args.sys_prompt and proc_args.sys_prompt != 'default':
+    output_dir = output_dir / f"sys_prompt_{proc_args.sys_prompt}"
   logger.info(f"Output directory: {output_dir}")
   rank0_print(data_args)
   generate_output(
@@ -266,7 +270,7 @@ if __name__ == "__main__":
     summary = evaluate(
         output_dir / 'results.jsonl',
         comp_answer=comp_answer_basic,
-        filter=yes_no_filter
+        filter=chexpert_filter if 'chexpert' in data_args.dataset_use else yes_no_filter,
     )
     with open(output_dir / 'summary.json', 'w') as f:
       json.dump(summary, f, indent=2)

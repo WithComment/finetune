@@ -5,6 +5,14 @@ from typing import Any
 
 class ConversationMaker(ABC):
   '''Abstract base class for creating conversation from an item in a dataset.'''
+  def __init__(self, **kwargs):
+    '''
+    Args:
+      for_training: If True, the conversation will be created for training.
+                    If False, it will be created for inference.
+    '''
+    for_training = kwargs.get('for_training', True)
+    self.for_training = for_training
 
   @abstractmethod
   def __call__(self, item: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -28,16 +36,31 @@ class ConversationMaker(ABC):
           elif 'video' in part:
             videos.append(part['video'])
     return texts, images, videos
-
-
-class VQAConversationMaker(ConversationMaker):
-  def __init__(self, for_training: bool = True):
+  
+  
+class TextConversationMaker(ConversationMaker):
+  def __init__(self, text_field: str = 'text', **kwargs):
     '''
     Args:
-      for_training: If True, the conversation will be created for training.
-                    If False, it will be created for inference.
+      text_field: The field name in the item that contains the text.
     '''
-    self.for_training = for_training
+    super().__init__(**kwargs)
+    self.text_field = text_field
+  def __call__(self, item: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+      # {'role': 'user', 'content': item['cft_prompt']},
+      {'role': 'assistant', 'content': item[self.text_field]}
+    ]
+
+
+class VQACM(ConversationMaker):
+  
+  def __init__(self, qa_list_field: str = None, **kwargs):
+    super().__init__(**kwargs)
+    if not self.for_training and qa_list_field:
+      raise ValueError("For inference, ask questions one by one. That is, do not use qa_list_field.")
+    
+    self.qa_list_field = qa_list_field
     
   def __call__(self, item: dict[str, Any]) -> list[dict[str, Any]]:
     '''Create a VQA conversation from an item in a dataset.
@@ -56,13 +79,119 @@ class VQAConversationMaker(ConversationMaker):
       user_content.append({'image': item['image']})
     elif 'video' in item:
       user_content.append({'video': item['video']})
-    user_content.append({'text': item.get('question', '')})
-    assistant_content = item.get('answer', '')
+    if self.qa_list_field:
+      qa_pairs = item[self.qa_list_field]
+    else:
+      qa_pairs = [{'question': item['question'], 'answer': item['answer']}]
+    
     conv = [{'role': 'user', 'content': user_content}]
-    if self.for_training:
-      conv.append({'role': 'assistant', 'content': assistant_content})
+    for qa in qa_pairs:
+      conv.append({'role': 'user', 'content': qa['question']})
+      if self.for_training:
+        conv.append({'role': 'assistant', 'content': qa['answer']})
     return conv
   
+  
+class CaptionCM(ConversationMaker):
+  def __init__(self, field_name: str = 'caption', **kwargs):
+    '''
+    Args:
+      field_name: The field name in the item that contains the caption.
+    '''
+    super().__init__(**kwargs)
+    self.field_name = field_name
+  
+  def __call__(self, item: dict[str, Any]) -> list[dict[str, Any]]:
+    '''Create a caption conversation from an item in a dataset.
+    
+    Args:
+      item: A dictionary representing an item in the dataset.
+      
+    Returns:
+      A dictionary containing the conversation.
+    '''
+    if self.field_name not in item:
+      raise ValueError(f"Item must contain '{self.field_name}' field.")
+    
+    conv = [{'role': 'user', 'content': item['image']}]
+    conv.append({'role': 'assistant', 'content': item[self.field_name]})
+    return conv
+  
+
+class ClassificationCM(ConversationMaker):
+  def __init__(self, exclude_keys: set[str] = None, include_keys: set[str] = None):
+    '''
+    Args:
+      ignore_keys: Theset of keys that are not labels.
+    '''
+    super().__init__(for_training=True)
+    if exclude_keys and include_keys and exclude_keys & include_keys:
+      raise ValueError("exclude_keys and include_keys cannot have common elements.")
+    self.exclude_keys = exclude_keys
+    self.include_keys = include_keys
+    
+  def __call__(self, item: dict[str, Any]) -> list[dict[str, Any]]:
+    labels = dict()
+    for key in item:
+      if self.exclude_keys and key in self.exclude_keys:
+        continue
+      if self.include_keys and key not in self.include_keys:
+        continue
+      labels[key] = item[key]
+    conv = [{'role': 'user', 'content': item['image']}]
+    for key, value in labels.items():
+      conv.append({'role': 'user', 'content': key.lower() + ': '})
+      conv.append({'role': 'assistant', 'content': value})
+    return conv
+
+
+class ChexpertCM(ConversationMaker):
+  views = set(['Frontal', 'Lateral', 'AP', 'PA'])
+  def __call__(self, item: dict[str, Any]) -> list[dict[str, Any]]:
+    questions = item['question']
+    answers = item['answer']
+    if isinstance(questions, str):
+      questions = [questions]
+    if isinstance(answers, str):
+      answers = [answers]
+    if len(questions) != len(answers):
+      raise ValueError("Questions and answers must have the same length.")
+    img = item['image']
+    conv = [{'role': 'user', 'content': [{'image': img}]}]
+    for q, a in zip(questions, answers):
+      if a in self.views:
+        q = f'What is the view of the chest X-ray? Choose from {q}. '
+      else:
+        q = f'Is {q} present? Choose from present/absent. '
+      conv.append({'role': 'user', 'content': q})
+      if self.for_training:
+        conv.append({'role': 'assistant', 'content': a})
+    return conv
+
+
+class OBVCM(ConversationMaker):
+  def __init__(self, **kwargs):
+    super().__init__(**kwargs)
+    self.captionCM = CaptionCM(field_name='caption', for_training=self.for_training)
+    self.VQACM = VQACM(qa_list_field='qa_pairs', for_training=self.for_training)
+  
+  def __call__(self, item: dict[str, Any]) -> list[dict[str, Any]]:
+    if item['type'] == 'qa_pairs':
+      return self.VQACM(item)
+    elif item['type'] == 'caption':
+      return self.captionCM(item)
+
+
+class MCCM(ConversationMaker):
+  def __call__(self, item):
+    question = "Question: " + item['question']
+    for opt, text in item['options'].items():
+      question += f"\nOption {opt}: {text}"
+    question += "\n"
+    conv = [{'role': 'user', 'content': question}]
+    return conv
+    
+    
 
 class ConversationModifier(ABC):
   '''
@@ -93,7 +222,7 @@ class ConversationModifier(ABC):
   
 class FirstPromptAdder(ConversationModifier):
   '''
-  Adds a system prompt to the conversation.
+  Add a prompt to the first conversatioin in the pack.
   
   Args:
     sys_prompt: The system prompt to add.
@@ -106,6 +235,7 @@ class FirstPromptAdder(ConversationModifier):
   
   
 class AllPromptAdder(ConversationModifier):
+  '''Add a prompt to all conversations in the pack.'''
   
   def __call__(self, conversation: list[list[dict[str, Any]]]) -> list[list[dict[str, Any]]]:
     for i in range(len(conversation)):
@@ -116,10 +246,11 @@ class AllPromptAdder(ConversationModifier):
 
 class RolePromptAdder(ConversationModifier):
   '''
-  Adds a user prompt to the conversation.
-  
-  Args:
-    user_prompt: The user prompt to add.
+  Add a prompt to all messages from a specific role in the conversation.
+  Example:
+  before: [[{'role': 'user', 'content': ['text': 'What is the capital of France?']}]]
+  after: [[{'role': 'user', 'content': [{'text': 'Answer straightforwardly and concisely: '}
+    {'text': 'What is the capital of France?'}]},
   '''
   
   def __call__(self, conversation: list[list[dict[str, Any]]]) -> list[list[dict[str, Any]]]:
@@ -127,12 +258,14 @@ class RolePromptAdder(ConversationModifier):
       user_prompt = random.choice(self.prompts)
       for message in conversation[i]:
         if message['role'] == self.role:
+          if isinstance(message['content'], str):
+            message['content'] = [{'text': message['content']}]
           message['content'].insert(self.idx, {'text': user_prompt})
           break
     return conversation
 
 class ConversationProcessor(ConversationMaker):
-  """Handles both one item or a list of items."""
+  """Handles a pack of items and returns flattened conversations."""
   def __init__(
       self,
       conversation_maker: ConversationMaker,

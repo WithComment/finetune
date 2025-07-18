@@ -48,6 +48,8 @@ def get_vid_frames_opencv(
     video_path: str,
     vid_proc_args: ProcessingArguments,
     all_frames: bool,
+    is_checking: bool,
+    is_counting: bool,
 ) -> tuple[np.ndarray, float]:
   """
   Processes video using OpenCV. Raises an exception on failure.
@@ -59,7 +61,9 @@ def get_vid_frames_opencv(
 
   if total_frames == 0 or avg_fps == 0:
     cap.release()
-    raise ValueError("Video file has zero frames or zero FPS with OpenCV.")
+    raise ValueError(f"Video file {video_path} has zero frames or zero FPS with OpenCV.")
+  if is_checking:
+    return
   
   video_length = total_frames / avg_fps
   if all_frames:
@@ -70,15 +74,21 @@ def get_vid_frames_opencv(
         max(num_frames_to_sample, vid_proc_args.video_min_frames),
         vid_proc_args.video_max_frames
     )
-
-  frame_idx = np.linspace(0, total_frames - 1, target_frames, dtype=int)
-
+    
   frames = []
-  for i in frame_idx:
-    cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+  if is_counting:
     ret, frame = cap.read()
     if ret:
       frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+  
+  else:
+    frame_idx = np.linspace(0, total_frames - 1, target_frames, dtype=int)
+
+    for i in frame_idx:
+      cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+      ret, frame = cap.read()
+      if ret:
+        frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
   cap.release()
 
@@ -92,7 +102,9 @@ def get_vid_frames_opencv(
 
 def get_video_frames(
     video: Path,
-    vid_proc_args: ProcessingArguments
+    vid_proc_args: ProcessingArguments,
+    is_checking: bool = False,
+    is_counting: bool = False,
 ) -> tuple[torch.Tensor, float]:
   """
   Samples frames from a video file with a robust fallback mechanism.
@@ -102,7 +114,7 @@ def get_video_frames(
   if isinstance(video, str):
     video = Path(video)
   all_frames = video.parent.name == 'vid_processed'
-  return get_vid_frames_opencv(video, vid_proc_args, all_frames)
+  return get_vid_frames_opencv(video, vid_proc_args, all_frames, is_checking, is_counting)
 
 
 def get_image(image) -> Image.Image:

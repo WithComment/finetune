@@ -53,10 +53,13 @@ class ProcessingArguments:
   
   sys_prompt: str = field(default='')
   cft_prompt: str = field(default='')
+  rst_prompt: str = field(default='')
   use_chat_template: bool = field(default=False, metadata={"help": "Use chat template for text input"})
   add_generation_prompt: bool = field(default=False, metadata={"help": "Add generation prompt to text input"})
   add_vision_id: bool = field(default=False, metadata={"help": "Add vision id to text input"})
   ignore_idx: int = field(default=-100, metadata={"help": "Index to ignore in loss calculation"})
+  padding_side: str = field(default="right", metadata={"help": "Padding side for text input, right pad when training, left pad when inference"})
+  use_bf16: bool = field(default=False, metadata={"help": "Use bfloat16 for training"})
   
   @property
   def media_params(self):

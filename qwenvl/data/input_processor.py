@@ -217,6 +217,8 @@ class InputProcessor(ProcessorMixin):
 
       if use_chat_template:
         add_text(f"{IM_END}\n", None)
+      else:
+        add_text(f"\n", None)
         
     if use_chat_template and add_generation_prompt:
       add_text(f"{IM_START}assistant\n", 'assistant')
@@ -274,18 +276,18 @@ class InputProcessor(ProcessorMixin):
         tensors=input_ids,
         target_length=target_length,
         padding_value=self.tokenizer.pad_token_id,
-        **output_kwargs['text_kwargs'],
+        padding_side=self.config.padding_side,
     )
     labels, _ = pad_and_stack_tensors(
         tensors=labels,
         target_length=target_length,
         padding_value=self.config.ignore_idx,
-        **output_kwargs['text_kwargs'],
+        padding_side=self.config.padding_side,
     )
     batch_features['input_ids'] = input_ids
     batch_features['attention_mask'] = attn_masks
     batch_features['labels'] = labels
-    return batch_text, batch_features
+    return batch_text, batch_features.to(torch.bfloat16) if self.config.use_bf16 else batch_features
 
   def __call__(
       self,

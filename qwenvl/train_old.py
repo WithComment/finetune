@@ -14,8 +14,6 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
-from pathlib import Path
-import datasets
 from transformers.trainer_utils import get_last_checkpoint
 from transformers import Trainer
 import os
@@ -24,12 +22,11 @@ import transformers
 import torch
 import torch.distributed as dist
 
-from qwenvl import module, utils
-from qwenvl.module import create_strategies, create_module
+from qwenvl.data.base import BaseDataset
 
 from .utils import PruneOldStateCallback, get_logger, print_trainable_parameters, print_trainable_parameters_visual, rank0_print
 
-from .data import avail_datasets
+from .data import avail_datasets, SFTDataset, BenchmarkDataset
 from .argument import *
 
 from transformers import Trainer, Qwen2_5_VLForConditionalGeneration, Qwen2VLForConditionalGeneration
@@ -81,9 +78,48 @@ def set_processor(processor, proc_args: ProcessingArguments, data_args: DataArgu
   vid_processor.max_pixels = proc_args.video_max_pixels
   img_processor.min_pixels = proc_args.image_min_pixels
   vid_processor.min_pixels = proc_args.video_min_pixels
-  img_processor.do_resize = True
 
   return processor
+
+
+def make_data_module(
+    processor,
+    data_args: DataArguments,
+    proc_args: ProcessingArguments,
+    for_training=True
+):
+  """Make dataset and collator for training or evaluation."""
+  BaseDataset.num_proc = data_args.num_proc
+  ds_name = data_args.dataset_use.replace('_', '-')
+  ds_class = avail_datasets[ds_name]['ds_class']
+
+  ds = ds_class(
+      name=ds_name,
+      processor=processor,
+      proc_args=proc_args,
+      data_args=data_args,
+  )
+  collate_fn = ds.collate_fn
+  return {
+      'train_dataset': ds if for_training else None,
+      'eval_dataset': ds if not for_training else None,
+      'data_collator': collate_fn,
+  }
+
+
+def rank0_make_data_module(*args, **kwargs):
+  data_module = None
+  if not dist.is_initialized():
+    return make_data_module(*args, **kwargs)
+  if dist.get_rank() == 0:
+    data_module = make_data_module(*args, **kwargs)
+  dist.barrier()
+  data_module = data_module or make_data_module(*args, **kwargs)
+  dist.barrier()
+  ds = data_module['train_dataset'] or data_module['eval_dataset']
+  if hasattr(ds, 'bin_pkl_path') and dist.get_rank() == 0:
+    ds.bin_pkl_path.unlink(missing_ok=True)
+  return data_module
 
 
 def set_min_lr(training_args: TrainingArguments):
@@ -95,41 +131,13 @@ def set_min_lr(training_args: TrainingArguments):
         training_args.learning_rate
   return training_args
 
-def create_datamodule(
-    processor: transformers.AutoProcessor,
-    data_args: DataArguments,
-    proc_args: ProcessingArguments,
-):
-  rank = dist.get_rank() if dist.is_initialized() else 0
-  preprocess_strategies, cp, ip = create_strategies(
-      processor=processor,
-      data_args=data_args,
-      proc_args=proc_args,
-      rank=rank,
-  )
-  
-  ds, collate_fn = None, None
-  if rank == 0:
-    ds, collate_fn = create_module(
-        data_args,
-        preprocess_strategies=preprocess_strategies,
-        cp=cp,
-        ip=ip,
-        rank=rank,
-    )
-  dist.barrier()
-  if rank != 0:
-    ds, collate_fn = create_module(
-        data_args,
-        preprocess_strategies=preprocess_strategies,
-        cp=cp,
-        ip=ip,
-        rank=rank,
-    )
-  return ds, collate_fn
 
 def train(attn_implementation="flash_attention_2"):
-  
+  if dist.is_initialized():
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    logger.info(f"Hello from Slurm! Rank {rank}/{world_size}")
+
   parser = transformers.HfArgumentParser((
       ModelArguments,
       DataArguments,
@@ -144,38 +152,19 @@ def train(attn_implementation="flash_attention_2"):
       model_args.model_name_or_path,
       use_fast=True,
   )
-  
-  training_args.deepspeed = "/projects/cft_vlm/finetune/qwenvl/scripts/zero3.json"
-
-  custom_prompt = []
-  if proc_args.cft_prompt:
-    custom_prompt.append(f"cft_{proc_args.cft_prompt.replace(',', '_')}")
-  if proc_args.sys_prompt:
-    custom_prompt.append(f"sys_{proc_args.sys_prompt.replace(',', '_')}")
-  if proc_args.usr_prompt:
-    custom_prompt.append(f"usr_{proc_args.usr_prompt.replace(',', '_')}")
-  
-  output_dir = Path(training_args.output_dir)
-  if custom_prompt:
-    output_dir = output_dir.with_name("_".join([output_dir.name, "_".join(custom_prompt)]))
-  
-  global logger
-  logger = get_logger(__name__, log_file=output_dir / 'training.log')
-  module.set_logger(logger)
-  utils.set_logger(logger)
-  training_args.output_dir = str(output_dir)
-  
-  logger.info(f"Output file {training_args.output_dir}")
 
   processor = set_processor(processor, proc_args, data_args)
 
-  ds, collate_fn = create_datamodule(
+  data_module = rank0_make_data_module(
       processor=processor,
       data_args=data_args,
       proc_args=proc_args,
+      for_training=True
   )
-  
-  model_class = Qwen2_5_VLForConditionalGeneration
+  if "Qwen2.5" in model_args.model_name_or_path:
+    model_class = Qwen2_5_VLForConditionalGeneration
+  elif "Qwen2" in model_args.model_name_or_path:
+    model_class = Qwen2VLForConditionalGeneration
     
   model = model_class.from_pretrained(
       model_args.model_name_or_path,
@@ -195,11 +184,10 @@ def train(attn_implementation="flash_attention_2"):
       processing_class=processor,
       args=training_args,
       callbacks=[PruneOldStateCallback],
-      train_dataset=ds,
-      data_collator=collate_fn,
+      **data_module
   )
   rank0_print(f"Trainer save_strategy: {trainer.args.save_strategy, trainer.args.save_steps, trainer.args.save_total_limit}")
-  
+
   last_checkpoint = None
   if os.path.isdir(training_args.output_dir):
     last_checkpoint = get_last_checkpoint(training_args.output_dir)

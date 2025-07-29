@@ -12,26 +12,23 @@ class ModelArguments:
       default="Qwen/Qwen2.5-VL-3B-Instruct")
   tune_mm_llm: bool = field(default=True)
   tune_mm_mlp: bool = field(default=True)
-  tune_mm_vision: bool = field(default=False)
+  tune_mm_vision: bool = field(default=False) 
 
 
 @dataclass
 class DataArguments:
   dataset_use: str = field(default="")
-  data_packing: bool = field(default=False)
+  packing: bool = field(default=False)
   split: str = field(default="train")
-  mode: str = field(default="ift", metadata={"help": "Training mode: 'cft', 'cpt', or 'ift'"})
   model_max_length: int = field(default=16384)
-  num_proc: int = field(default=32)
   portion: float = field(default=1.0)
-  force: bool = field(default=False)
-  sys_prompt: str = field(default='default')
+  eval_batch_size: int = field(default=1, metadata={"help": "Batch size for evaluation."})
 
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
   cache_dir: Optional[str] = field(default=None)
-  optim: str = field(default="adamw_torch")
+  optim: str = field(default="adamw_bnb_8bit")
   mm_projector_lr: Optional[float] = None
   vision_tower_lr: Optional[float] = None
   min_lr_ratio: Optional[float] = field(default=0.1, metadata={"help": "Minimum learning rate ratio for cosine_with_min_lr scheduler"})
@@ -52,27 +49,29 @@ class ProcessingArguments:
   video_max_frames: int = field(default=420)
   video_min_frames: int = field(default=4)
   base_interval: int = field(default=1)
-
-
-@dataclass
-class EvalArguments:
-  model_name_or_path: str = field(
-      default="Qwen/Qwen2.5-VL-3B-Instruct",
-      metadata={"help": "Path to the model to be evaluated."}
-  )
-  max_new_tokens: int = field(
-      default=32,
-      metadata={"help": "Maximum number of new tokens to generate."}
-  )
-  do_sample: bool = field(
-      default=False,
-      metadata={"help": "Whether to use sampling for generation."}
-  )
-  output_dir: str = field(
-      default=None,
-      metadata={"help": "Directory to save the evaluation results."}
-  )
-  deepspeed: str = field(
-      default=None,
-      metadata={"help": "Path to the deepspeed configuration file."}
-  )
+  temporal_patch_size: int = field(default=2, metadata={"help": "Temporal patch size for video processing"})
+  
+  sys_prompt: str = field(default='')
+  cft_prompt: str = field(default='')
+  usr_prompt: str = field(default='')
+  use_chat_template: bool = field(default=False, metadata={"help": "Use chat template for text input"})
+  add_generation_prompt: bool = field(default=False, metadata={"help": "Add generation prompt to text input"})
+  add_vision_id: bool = field(default=False, metadata={"help": "Add vision id to text input"})
+  ignore_idx: int = field(default=-100, metadata={"help": "Index to ignore in loss calculation"})
+  padding_side: str = field(default="right", metadata={"help": "Padding side for text input, right pad when training, left pad when inference"})
+  use_bf16: bool = field(default=False, metadata={"help": "Use bfloat16 for training"})
+  
+  @property
+  def media_params(self):
+    return {
+        "image_min_pixels": self.image_min_pixels,
+        "image_max_pixels": self.image_max_pixels,
+        "default_to_square": self.default_to_square,
+        "video_min_pixels": self.video_min_pixels,
+        "video_max_pixels": self.video_max_pixels,
+        "video_max_frames": self.video_max_frames,
+        "video_min_frames": self.video_min_frames,
+        "base_interval": self.base_interval,
+        "temporal_patch_size": self.temporal_patch_size,
+    }
+  

@@ -8,21 +8,26 @@ from .utils import get_logger
 logger = get_logger(__name__)
 
 
-def yes_no_filter(answer: str) -> bool:
-  return answer.strip().lower() in ['yes', 'no']
+def yes_no_filter(answer: list[str]) -> bool:
+  yes_no_answers = ['yes', 'no', 'y', 'n']
+  return any(c in yes_no_answers for c in answer)
+
+def chexpert_filter(answer: list[str]) -> bool:
+  chexpert_answers = [
+    'present', 'absent', 'ap', 'pa', 'lateral', 'frontal',
+  ]
+  return any(c in chexpert_answers for c in answer)
+
+def mc_filter(answer: list[str]) -> bool:
+  return any(c in ['a', 'b', 'c', 'd'] for c in answer)
 
 
-def parse_answer_basic(answer: str) -> str:
-  return re.split(r'[^\w]+', answer.strip())[0].lower()
+def parse_answer_basic(answer: str, k: int = 3) -> str:
+  return re.split(r'[^\w]+', answer.strip().lower())[:k]
 
 
 def comp_answer_basic(answer: str, model_answer: str) -> bool:
-  """
-  Basic comparison function that checks if the model answer matches the expected answer.
-  """
-  model_answer = re.split(r'[^\w]+', model_answer.strip())
-  model_answer = model_answer[0].lower()
-  return answer.strip().lower() == model_answer.strip().lower()
+  return answer[0] in model_answer
 
 
 def evaluate(
@@ -41,7 +46,10 @@ def evaluate(
   invalid = 0
   
   for item in items:
-    answer = parse_answer(item['answer'])
+    if 'mnist' in str(output_file):
+      answer = parse_answer(str(item['label']))
+    else:
+      answer = parse_answer(item['answer'])
     if not filter(answer):
       continue
     total += 1

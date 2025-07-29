@@ -8,7 +8,7 @@ import sys
 import torch.distributed as dist
 from transformers import TrainerCallback, TrainingArguments
 
-def get_logger(name):
+def get_logger(name, log_file: Path=None):
   logger = logging.getLogger(name)
   logger.setLevel(logging.INFO)
   logger.propagate = False
@@ -17,17 +17,33 @@ def get_logger(name):
   console_handler.setLevel(logging.INFO)
   formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
   console_handler.setFormatter(formatter)
+  
+  if dist.is_initialized() and dist.get_rank() != 0:
+    # If not rank 0, set the logger to only log warnings and errors
+    logger.setLevel(logging.WARNING)
+    console_handler.setLevel(logging.WARNING)
 
   # Add handler to logger (avoid duplicate handlers)
   if not logger.handlers:
     logger.addHandler(console_handler)
 
+  if log_file and not any(isinstance(h, logging.FileHandler) for h in logger.handlers):
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+  
   return logger
 
 
-default_logger = get_logger(__name__)
+logger = get_logger(__name__)
+def set_logger(new_logger):
+  global logger
+  logger = new_logger
 
-def rank0_print(msg, logger=default_logger, lvl="INFO"):
+def rank0_print(msg, logger=logger, lvl="INFO"):
   lvl = getattr(logging, lvl.upper(), logging.INFO)
   if not dist.is_initialized() or dist.get_rank() == 0:
     logger.log(level=lvl, msg=msg)

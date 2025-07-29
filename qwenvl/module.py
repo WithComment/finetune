@@ -5,14 +5,16 @@ import datasets
 from transformers import AutoProcessor
 from qwenvl.argument import DataArguments, ProcessingArguments
 from qwenvl.data.conversation import AllPromptAdder, ConversationMaker, ConversationProcessor, FirstPromptAdder, RolePromptAdder, VQACM
-from qwenvl.data.input_processor import InputProcessor
-from qwenvl.data.preprocess import GetNumMediaTokensStrategy, GetNumTokensStrategy, PreprocessStrategy, SaveStrategy, VerifyMediaStrategy, pack_dataset
-from qwenvl.data.prompts import CFT_PROMPTS, RST_PROMPTS, SYS_PROMPTS
+from qwenvl.data.input_processor import IMAGE_PAD, InputProcessor
+from qwenvl.data.preprocess import FilterStrategy, GetNumMediaTokensStrategy, GetNumTokensStrategy, PreprocessStrategy, SaveStrategy, VerifyMediaStrategy, pack_dataset
+from qwenvl.data.prompts import CFT_PROMPTS, USR_PROMPTS, SYS_PROMPTS
 from qwenvl.data import avail_datasets
 from qwenvl.utils import get_logger
 
 logger = get_logger(__name__)
-
+def set_logger(new_logger):
+  global logger
+  logger = new_logger
 
 class DatasetWrapper:
   def __init__(self, ds: datasets.Dataset, bins: list | None):
@@ -50,6 +52,7 @@ def create_module(
     logger.info(f"Applying strategy {strategy.__class__.__name__}")
     ds = strategy(ds)
 
+  # Note strategies act on all splits.
   ds = ds[data_args.split]
   if data_args.packing:
     bins = pack_dataset(ds, data_args.model_max_length)
@@ -63,10 +66,12 @@ def create_module(
     return ip(conv)
   
   if rank == 0:
-    batch = ds[:2]
+    batch = ds[:1]
     conv = [cp(item[:2]) for item in batch]
     text = ip.get_text(conv, text_only=True)
-    labels = ip(conv).labels
+    inputs = ip(conv)
+    assert (inputs.input_ids == ip.tokenizer.convert_tokens_to_ids(IMAGE_PAD)).sum() >= 64
+    labels = inputs['labels']
     _labels = []
     for item in labels:
       _labels.append(item[item != ip.config.ignore_idx])
@@ -101,24 +106,28 @@ def create_strategies(
   )
   modifiers = []
   
-  # Sysprompt must come after cft prompts because we don't want cft prompts on system prompt.
-  if proc_args.cft_prompt and proc_args.cft_prompt in CFT_PROMPTS:
-    cft_prompts = CFT_PROMPTS[proc_args.cft_prompt]
-    modifiers.append(AllPromptAdder(cft_prompts))
-  else:
-    logger.warning(f"CFT prompt {proc_args.cft_prompt} not found, not using it.")
-  
-  if proc_args.rst_prompt and proc_args.rst_prompt in RST_PROMPTS:
-    restriction_prompts = RST_PROMPTS[proc_args.rst_prompt]
-    modifiers.append(RolePromptAdder(restriction_prompts, idx=1, role='user'))
-  else:
-    logger.warning(f"Restriction prompt {proc_args.rst_prompt} not found, not using it.")
+  for cft_prompt_name in proc_args.cft_prompt.split(",")[::-1]:
+    if cft_prompt_name in CFT_PROMPTS:
+      cft_prompts = CFT_PROMPTS[cft_prompt_name]
+      modifiers.append(AllPromptAdder(cft_prompts))
+    else:
+      logger.warning(f"CFT prompt {cft_prompt_name} not found, not using it.")
+      
+  for usr_prompt_name in proc_args.usr_prompt.split(",")[::-1]:
+    if usr_prompt_name in USR_PROMPTS:
+      usr_prompt = USR_PROMPTS[usr_prompt_name]
+      modifiers.append(RolePromptAdder(usr_prompt, idx=1, role='user'))
+      logger.info(f"Using user prompt {usr_prompt_name}")
+    else:
+      logger.warning(f"User prompt {usr_prompt_name} not found, not using it.")
 
-  if proc_args.sys_prompt and proc_args.sys_prompt in SYS_PROMPTS:
-    sys_prompt = SYS_PROMPTS[proc_args.sys_prompt]
-    modifiers.append(FirstPromptAdder(sys_prompt))
-  else:
-    logger.warning(f"System prompt {proc_args.sys_prompt} not found, not using it.")
+  for sys_prompt_name in proc_args.sys_prompt.split(",")[::-1]:
+    if sys_prompt_name in SYS_PROMPTS:
+      sys_prompt = SYS_PROMPTS[sys_prompt_name]
+      modifiers.append(FirstPromptAdder(sys_prompt))
+      logger.info(f"Using system prompt {sys_prompt_name}")
+    else:
+      logger.warning(f"System prompt {sys_prompt_name} not found, not using it.")
     
   cp = ConversationProcessor(
       conversation_maker=base_cm,
@@ -132,16 +141,21 @@ def create_strategies(
   
   preprocess_strategies = []
   if rank == 0:
-    preprocess_strategies.append(VerifyMediaStrategy(
-        get_content_fn=cp.get_content,
-        config=proc_args,
-    ))
-    if data_args.packing:
+    if 'mnist' not in data_args.dataset_use:
+      preprocess_strategies.append(VerifyMediaStrategy(
+          get_content_fn=cp.get_content,
+          config=proc_args,
+      ))
       preprocess_strategies.append(GetNumMediaTokensStrategy(
           get_content_fn=cp.get_content,
           config=proc_args,
       ))
-      preprocess_strategies.append(GetNumTokensStrategy(cm=cp, processor=ip))
-    preprocess_strategies.append(SaveStrategy(ds_config['ds_dir'], ds_config['ds_dir']))
+      if data_args.split == 'train':
+        preprocess_strategies.append(GetNumTokensStrategy(cm=cp, processor=ip))
+        preprocess_strategies.append(FilterStrategy(lambda x: x['num_tokens'] <= data_args.model_max_length))
+      else:
+        preprocess_strategies.append(FilterStrategy(lambda x: x['num_media_tokens'] <= data_args.model_max_length))
+        
+    preprocess_strategies.append(SaveStrategy(ds_config['ds_dir'], True))
   
   return preprocess_strategies, cp, ip

@@ -5,7 +5,6 @@ from ..data import avail_datasets, BenchmarkDataset
 
 default_datasets = [
   f"{k}:test:1.0" for k in avail_datasets
-  if issubclass(avail_datasets[k]['ds_class'], BenchmarkDataset)
 ]
 
 default_models = [
@@ -33,7 +32,7 @@ if __name__ == "__main__":
     help="Ignore errors during the execution of the command."
   )
   parser.add_argument(
-    '--sys_prompt', type=str, default='default', choices=['default', 'none', 'custom'],
+    '--sys_prompt', type=str, default='default',
     help="Use custom system prompt for the predictions."
   )
   args = parser.parse_args()

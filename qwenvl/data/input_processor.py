@@ -197,7 +197,6 @@ class InputProcessor(ProcessorMixin):
       return idx + 1
 
     for message in messages:
-
       if not (isinstance(message['content'], list) or isinstance(message['content'], str)):
         raise ValueError("Content must be a string or a list of dictionaries.")
 
@@ -277,8 +276,9 @@ class InputProcessor(ProcessorMixin):
         target_length=target_length,
         padding_value=self.tokenizer.pad_token_id,
         padding_side=self.config.padding_side,
+        return_attn_masks=True,
     )
-    labels, _ = pad_and_stack_tensors(
+    labels = pad_and_stack_tensors(
         tensors=labels,
         target_length=target_length,
         padding_value=self.config.ignore_idx,
@@ -327,6 +327,7 @@ def pad_and_stack_tensors(
     padding_value: int = 0,
     padding_side: Literal["right", "left"] = "right",
     truncation_side: Literal["right", "left"] = "right",
+    return_attn_masks: bool = False,
     **kwargs,
 ) -> torch.Tensor:
   """
@@ -371,9 +372,6 @@ def pad_and_stack_tensors(
   processed_tensors = []
   device = tensors[0].device
 
-  if any(tensor.dim() != 1 for tensor in tensors):
-    raise ValueError("All tensors in the input list must be 1D tensors.")
-
   for tensor in tensors:
     current_len = len(tensor)
 
@@ -392,7 +390,7 @@ def pad_and_stack_tensors(
         padding = (pad_len, 0)
 
       processed_tensor = F.pad(tensor, padding, "constant", padding_value)
-      mask = torch.ones(current_len, dtype=torch.long, device=device)
+      mask = torch.ones(current_len, dtype=torch.float, device=device)
       mask = F.pad(mask, padding, "constant", 0)
 
     processed_tensors.append(processed_tensor)
@@ -400,8 +398,9 @@ def pad_and_stack_tensors(
 
   stacked_tensors = torch.stack(processed_tensors)
   stacked_masks = torch.stack(attention_masks)
-
-  return stacked_tensors, stacked_masks
+  if return_attn_masks:
+    return stacked_tensors, stacked_masks
+  return stacked_tensors
 
 
 if __name__ == '__main__':

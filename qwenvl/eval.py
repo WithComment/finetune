@@ -46,7 +46,10 @@ def evaluate(
   invalid = 0
   
   for item in items:
-    answer = parse_answer(item['answer'])
+    if 'mnist' in str(output_file):
+      answer = parse_answer(str(item['label']))
+    else:
+      answer = parse_answer(item['answer'])
     if not filter(answer):
       continue
     total += 1

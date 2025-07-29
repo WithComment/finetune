@@ -60,8 +60,8 @@ get_data_args() {
     --dataset_use ${dataset_use} \
     --packing ${packing} \
     --split train \
-    --model_max_length  8192\
-    --portion 1.0"
+    --model_max_length 6000 \
+    --portion 1.0 "
 }
 
 get_proc_args() {
@@ -73,6 +73,12 @@ get_proc_args() {
     if [[ -n "${cft_prompt}" ]]; then
         args="${args} --cft_prompt ${cft_prompt}"
     fi
+    if [[ -n "${sys_prompt}" ]]; then
+        args="${args} --sys_prompt ${sys_prompt}"
+    fi
+    if [[ -n "${usr_prompt}" ]]; then
+        args="${args} --usr_prompt ${usr_prompt}"
+    fi
     
     echo "${args}"
 }
@@ -82,13 +88,12 @@ get_base_train_args() {
     local output_dir=$1
     local run_name=$2
     echo "
-    --deepspeed /projects/cft_vlm/finetune/qwenvl/scripts/zero3.json \
     --optim adamw_bnb_8bit \
     --output_dir ${output_dir} \
     --bf16 \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 8 \
-    --gradient_accumulation_steps 1 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 8 \
     --eval_strategy no \
     --lr_scheduler_type cosine_with_min_lr \
     --min_lr_ratio 0.1 \
@@ -97,6 +102,8 @@ get_base_train_args() {
     --warmup_ratio 0 \
     --max_grad_norm 1 \
     --logging_steps 1 \
+    --save_strategy steps \
+    --save_steps 0.5 \
     --gradient_checkpointing True \
     --dataloader_num_workers 4 \
     --run_name ${run_name} \
@@ -112,6 +119,8 @@ run_training() {
     local model_name_or_path=$4
     local packing=$5
     local use_chat_template=$6
+    local sys_prompt=$7
+    local usr_prompt=$8
 
     # Compose run_name: stem is dataset_use, append "-cft" if cft_prompt is not empty
     local run_name="${dataset_use}"
@@ -142,7 +151,7 @@ run_training() {
         ${train_args}"
 
     echo "Starting training process in the background..."
-    torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args} &
+    TORCH_CUDA_USE_DSA=1 torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args} &
     PROC_ID=$!
 
     echo "Waiting for process $PROC_ID. The script can now receive signals."
@@ -167,6 +176,8 @@ setup_environment
 # Parse positional and keyword arguments
 dataset_use=""
 cft_prompt=""
+usr_prompt=""
+sys_prompt=""
 # lower case for bash.
 requeue="false"
 model_name_or_path="Qwen/Qwen2.5-VL-3B-Instruct"
@@ -198,15 +209,15 @@ while [[ $# -gt 0 ]]; do
                 echo "Error: --sys_prompt requires a value"
                 exit 1
             fi
-            cft_prompt="$2"
+            sys_prompt="$2"
             shift 2
             ;;
-        --rst_prompt)
+        --usr_prompt)
             if [[ $# -lt 2 ]]; then
-                echo "Error: --rst_prompt requires a value"
+                echo "Error: --usr_prompt requires a value"
                 exit 1
             fi
-            cft_prompt="$2"
+            usr_prompt="$2"
             shift 2
             ;;
         --requeue)
@@ -259,5 +270,7 @@ echo "Debug: requeue='$requeue'"
 echo "Debug: model_name_or_path='$model_name_or_path'"
 echo "Debug: packing='$packing'"
 echo "Debug: use_chat_template='$use_chat_template'"
+echo "Debug: sys_prompt='$sys_prompt'"
+echo "Debug: usr_prompt='$usr_prompt'"
 
-run_training "$dataset_use" "$cft_prompt" "$requeue" "$model_name_or_path" "$packing" "$use_chat_template"
+run_training "$dataset_use" "$cft_prompt" "$requeue" "$model_name_or_path" "$packing" "$use_chat_template" "$sys_prompt" "$usr_prompt"

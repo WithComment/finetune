@@ -10,32 +10,63 @@ Temporally: Pinpoint the moments of procedural state change. The decisive eviden
 
 Apply this focused analysis of space and time to the video to find the precise evidence required to answer the question.
 """,
+  'just_focus': "Focus on the image. Base your answer strictly on the visual evidence presented in the image.",
   'path_vqa': [
-    "You are an AI assistant specialized in pathology. Your task is to analyze the provided pathology image and answer the user's question. Focus your analysis on the visual evidence. Identify relevant histological and cytological features to provide a direct and concise answer, grounded in what is visible in the image. Use precise medical terminology",
-    "You are an expert pathologist with access to high-resolution microscopic pathology images. Your task is to analyze these images in detail and answer specific questions about the observed pathological features. Focus on identifying and describing cellular morphology, tissue architecture, inflammatory processes, and any neoplastic or infectious changes. Ensure your answers are grounded in the visual evidence presented in the image, directly referencing the structures and changes you observe to support your response. Prioritize accuracy and provide precise descriptions relevant to pathological diagnosis."],
+    "Examine the key features in this medical image, such as anatomical structures, abnormal shapes, and variations in density. Based your answer strictly on what you see.",
+    "Analyze the pathological image. Focus on the most important visual evidence in the image and ground your answer on those evidence."
+  ],
   'vqa_rad': [
-    "You are an AI assistant specialized in radiology. Your task is to analyze the provided image, identifying key anatomical structures and radiological findings. Answer the user's question directly, basing your response strictly on the visual evidence in the scan. Use precise radiological terminology and describe only what is visible.",
-
-    "You are an AI model trained for objective radiological image analysis. Examine the scan and provide a factual description of the visual findings to answer the question. Focus on location, morphology, and signal/density characteristics. Your response must be grounded in the image and avoid clinical diagnosis or inference."
+    "Examine the key features in this radiological image, such as cell structures and tissue organization. Based your answer strictly on what you see.",
+    "Analyze the radiological image. Focus on the most important visual evidence in the image and ground your answer on those evidence."
   ],
   'generic_vqa': [
-    # Prompt 1: To improve grounding
-    "Base your answer directly on the visual information in the image. Describe only what is visibly present to support your response.",
-
-    # Prompt 2: To improve attention to the image
+    "Base your answer directly on the visual information in the image. Use only what is visibly present to support your response.",
     "Carefully examine all the visual details in the image before answering. Identify the key objects and their attributes relevant to the question.",
-
-    # Prompt 3: To reduce hallucination
-    "Answer only with information that can be verified from the image. If the answer is not in the image, state that you cannot tell from the information provided.",
-
-    # Prompt 4: To improve sensitivity in long-tail scenarios
-    "Scan the entire image, including the background and smaller details, not just the main subject. Your answer should consider all relevant objects and actions shown."
   ],
+
 }
 
-RST_PROMPTS = {
+USR_PROMPTS = {
   'default': "Answer straightfowardly and concisely.",
-  'medqa_mc': "Choose from the letter corresponding to the correct answer.",
+  'medqa_mc': "Answer with only the letter corresponding to the correct option and nothing else.",
+  'path_vqa': [
+    "Examine the key features in this medical image, such as anatomical structures, abnormal shapes, and variations in density. Based your answer strictly on what you see.",
+    "Analyze the pathological image. Focus on the most important visual evidence in the image and ground your answer on those evidence."
+  ],
+  'vqa_rad': [
+    "Examine the key features in this radiological image, such as cell structures and tissue organization. Based your answer strictly on what you see.",
+    "Analyze the radiological image. Focus on the most important visual evidence in the image and ground your answer on those evidence."
+  ],
+  'generic_vqa': [
+    "Base your answer directly on the visual information in the image. Use only what is visibly present to support your response.",
+    "Carefully examine all the visual details in the image before answering. Identify the key objects and their attributes relevant to the question.",
+  ],
+  'number_only': "Answer with only the number corresponding to the correct option and nothing else.",
+  'just_focus': "Focus on the image. Base your answer strictly on the visual evidence presented in the image.",
+  'fashion_mnist': ('''Choose from the following options:
+0. Trouser
+1. boot
+2. Sneaker
+3. Pullover
+4. Shirt
+5. Bag
+6. Sandal
+7. T-shirt/top
+8. Coat
+9. Dress
+'''),
+  'fashion_mnist_shuffled': ('''Choose from the following options:
+0. Trouser
+1. boot
+2. Sneaker
+3. Pullover
+4. Shirt
+5. Bag
+6. Sandal
+7. T-shirt/top
+8. Coat
+9. Dress
+'''),
 }
 
 CFT_PROMPTS = {

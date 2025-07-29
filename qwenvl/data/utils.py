@@ -80,6 +80,7 @@ def get_vid_frames_opencv(
     ret, frame = cap.read()
     if ret:
       frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    frames = frames * target_frames
   
   else:
     frame_idx = np.linspace(0, total_frames - 1, target_frames, dtype=int)

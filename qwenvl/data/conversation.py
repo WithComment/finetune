@@ -92,6 +92,25 @@ class VQACM(ConversationMaker):
     return conv
   
   
+class MNISTCM(ConversationMaker):
+  def __call__(self, item: dict[str, Any]) -> list[dict[str, Any]]:
+    '''Create a MNIST conversation from an item in a dataset.
+    
+    Args:
+      item: A dictionary representing an item in the dataset.
+      
+    Returns:
+      A dictionary containing the conversation.
+    '''
+    conv = [{'role': 'user', 'content': [
+      {'image': item['image']},
+      {'text': 'What type of clothing is in this image?'}
+    ]}]
+    if self.for_training:
+      conv.append({'role': 'assistant', 'content': str(item['label'])})
+    return conv
+  
+  
 class CaptionCM(ConversationMaker):
   def __init__(self, field_name: str = 'caption', **kwargs):
     '''

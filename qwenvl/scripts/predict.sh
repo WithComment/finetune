@@ -4,7 +4,7 @@
 #SBATCH --mem=0
 #SBATCH --ntasks-per-node=1
 #SBATCH -c 32
-#SBATCH --qos=m2
+#SBATCH --qos=m3
 #SBATCH --gres=gpu:4
 #SBATCH --partition=a40
 #SBATCH --open-mode=append
@@ -12,7 +12,7 @@
 #SBATCH --output=logs/infer/%j.out
 #SBATCH --error=logs/infer/%j.err
 #SBATCH --requeue
-#SBATCH --time=8:00:00
+#SBATCH --time=4:00:00
 #SBATCH --signal=B:USR1@60
 #SBATCH --signal=B:TERM@60
 
@@ -42,7 +42,7 @@ split="test"
 portion="1.0"
 use_chat_template="True"
 # ...existing code...
-rst_prompt=""
+usr_prompt="default"
 
 # Parse positional and keyword arguments
 while [[ $# -gt 0 ]]; do
@@ -64,12 +64,12 @@ while [[ $# -gt 0 ]]; do
             sys_prompt="$2"
             shift 2
             ;;
-        --rst_prompt)
+        --usr_prompt)
             if [[ $# -lt 2 ]]; then
-                echo "Error: --rst_prompt requires a value"
+                echo "Error: --usr_prompt requires a value"
                 exit 1
             fi
-            rst_prompt="$2"
+            usr_prompt="$2"
             shift 2
             ;;
         --requeue)
@@ -126,7 +126,7 @@ fi
 
 echo "Debug: dataset_use='$dataset_use'"
 echo "Debug: sys_prompt='$sys_prompt'"
-echo "Debug: rst_prompt='$rst_prompt'"
+echo "Debug: usr_prompt='$usr_prompt'"
 echo "Debug: requeue='$requeue'"
 echo "Debug: model_name_or_path='$model_name_or_path'"
 echo "Debug: split='$split'"
@@ -140,15 +140,15 @@ data_args="
     --dataset_use ${dataset_use} \
     --split ${split} \
     --portion ${portion} \
-    --eval_batch_size 4 \
-    --model_max_length 8192"
+    --eval_batch_size 1 \
+    --model_max_length 16384"
 
 proc_args="
     --use_chat_template ${use_chat_template} \
     --add_generation_prompt True"
 
-if [[ -n "${rst_prompt}" ]]; then
-    proc_args="${proc_args} --rst_prompt ${rst_prompt}"
+if [[ -n "${usr_prompt}" ]]; then
+    proc_args="${proc_args} --usr_prompt ${usr_prompt}"
 fi
 
 if [[ -n "${sys_prompt}" ]]; then
@@ -162,7 +162,7 @@ args="
 # ...existing code...
 
 echo "Starting evaluation process in the background..."
-torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.predict ${args} &
+torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.predict ${args}
 PROC_ID=$!
 
 echo "Waiting for process $PROC_ID. The script can now receive signals."

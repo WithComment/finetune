@@ -14,6 +14,7 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+from pathlib import Path
 import datasets
 from transformers.trainer_utils import get_last_checkpoint
 from transformers import Trainer
@@ -23,6 +24,7 @@ import transformers
 import torch
 import torch.distributed as dist
 
+from qwenvl import module, utils
 from qwenvl.module import create_strategies, create_module
 
 from .utils import PruneOldStateCallback, get_logger, print_trainable_parameters, print_trainable_parameters_visual, rank0_print
@@ -79,6 +81,7 @@ def set_processor(processor, proc_args: ProcessingArguments, data_args: DataArgu
   vid_processor.max_pixels = proc_args.video_max_pixels
   img_processor.min_pixels = proc_args.image_min_pixels
   vid_processor.min_pixels = proc_args.video_min_pixels
+  img_processor.do_resize = True
 
   return processor
 
@@ -141,6 +144,28 @@ def train(attn_implementation="flash_attention_2"):
       model_args.model_name_or_path,
       use_fast=True,
   )
+  
+  training_args.deepspeed = "/projects/cft_vlm/finetune/qwenvl/scripts/zero3.json"
+
+  custom_prompt = []
+  if proc_args.cft_prompt:
+    custom_prompt.append(f"cft_{proc_args.cft_prompt.replace(',', '_')}")
+  if proc_args.sys_prompt:
+    custom_prompt.append(f"sys_{proc_args.sys_prompt.replace(',', '_')}")
+  if proc_args.usr_prompt:
+    custom_prompt.append(f"usr_{proc_args.usr_prompt.replace(',', '_')}")
+  
+  output_dir = Path(training_args.output_dir)
+  if custom_prompt:
+    output_dir = output_dir.with_name("_".join([output_dir.name, "_".join(custom_prompt)]))
+  
+  global logger
+  logger = get_logger(__name__, log_file=output_dir / 'training.log')
+  module.set_logger(logger)
+  utils.set_logger(logger)
+  training_args.output_dir = str(output_dir)
+  
+  logger.info(f"Output file {training_args.output_dir}")
 
   processor = set_processor(processor, proc_args, data_args)
 
@@ -174,7 +199,7 @@ def train(attn_implementation="flash_attention_2"):
       data_collator=collate_fn,
   )
   rank0_print(f"Trainer save_strategy: {trainer.args.save_strategy, trainer.args.save_steps, trainer.args.save_total_limit}")
-
+  
   last_checkpoint = None
   if os.path.isdir(training_args.output_dir):
     last_checkpoint = get_last_checkpoint(training_args.output_dir)

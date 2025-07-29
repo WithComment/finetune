@@ -53,7 +53,7 @@ class ProcessingArguments:
   
   sys_prompt: str = field(default='')
   cft_prompt: str = field(default='')
-  rst_prompt: str = field(default='')
+  usr_prompt: str = field(default='')
   use_chat_template: bool = field(default=False, metadata={"help": "Use chat template for text input"})
   add_generation_prompt: bool = field(default=False, metadata={"help": "Add generation prompt to text input"})
   add_vision_id: bool = field(default=False, metadata={"help": "Add vision id to text input"})

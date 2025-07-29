@@ -1,10 +1,22 @@
-from qwenvl.data.conversation import MCCM, VQACM, CaptionCM, ChexpertCM, ClassificationCM, OBVCM, TextConversationMaker
+from qwenvl.data.conversation import MCCM, MNISTCM, VQACM, CaptionCM, ChexpertCM, ClassificationCM, OBVCM, TextConversationMaker
 from ..utils import get_logger
 
 logger = get_logger(__name__)
 
 
 avail_datasets = {
+  "merged_fashion": {
+    "ds_dir": "/projects/cft_vlm/datasets/merged_fashion/data/dataset",
+    "media_dir": None,
+    "ds_key": "withcomment/merged_fashion",
+    "cm": VQACM,
+  },
+  "fashion_mnist": {
+    "ds_dir": "/projects/cft_vlm/datasets/fasion_mnist/data/dataset",
+    "media_dir": None,
+    "ds_key": "zalando-datasets/fashion_mnist",
+    "cm": MNISTCM,
+  },
   "path_vqa": {
     "ds_dir": "/projects/cft_vlm/datasets/path_vqa/data/dataset",
     "media_dir": None,

@@ -193,3 +193,5 @@ wandb/
 *.log
 *.pyc
 *.swp
+
+*.pt

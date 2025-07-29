@@ -65,7 +65,7 @@ class GetNumMediaTokensStrategy(PreprocessStrategy):
 
   def get_num_content_tokens(self, item):
     try:
-      texts, images, videos = self.get_content_fn(item)
+      _, images, videos = self.get_content_fn(item)
 
       num_tokens = 0
       
@@ -79,7 +79,7 @@ class GetNumMediaTokensStrategy(PreprocessStrategy):
         num_tokens += h_tokens * w_tokens
 
       for vid in videos:
-        vid, fps = get_video_frames(vid, self.config, is_counting=True)
+        vid, _ = get_video_frames(vid, self.config, is_counting=True)
         nframes = vid.shape[0]
         frame = vid[:1]
         h, w, h_tokens, w_tokens = smart_resize(
@@ -103,11 +103,15 @@ class GetNumMediaTokensStrategy(PreprocessStrategy):
     Content are defined by the `get_content` method.
     """
     logger.info("Counting media tokens in the dataset.")
-    return ds.map(
+    ds = ds.map(
       self.get_num_content_tokens,
       num_proc=self.num_proc,
       desc="Counting media tokens",
     )
+    total_media_tokens = sum(sum(split['num_media_tokens']) for split in ds.values())
+    total_len = sum(len(split) for split in ds.values())
+    logger.info(f"Average number of media tokens: {total_media_tokens / total_len:.2f}")
+    return ds
 
 
 class GetNumTokensStrategy(PreprocessStrategy):
@@ -145,7 +149,7 @@ class FilterStrategy(PreprocessStrategy):
       filter_fns = [filter_fns]
     self.filter_fns = filter_fns
 
-  def preprocess(self, ds: datasets.Dataset) -> datasets.Dataset:
+  def __call__(self, ds: datasets.Dataset) -> datasets.Dataset:
     init_len = len(ds)
     for fn in self.filter_fns:
       total = len(ds)

@@ -46,9 +46,10 @@ setup_environment() {
 # Common model arguments
 get_model_args() {
     local model_name_or_path=$1
+    local tune_mm_vision=$2
     echo "
     --model_name_or_path ${model_name_or_path} \
-    --tune_mm_vision False \
+    --tune_mm_vision ${tune_mm_vision} \
     --tune_mm_mlp True \
     --tune_mm_llm True"
 }
@@ -60,7 +61,7 @@ get_data_args() {
     --dataset_use ${dataset_use} \
     --packing ${packing} \
     --split train \
-    --model_max_length 6000 \
+    --model_max_length 8000 \
     --portion 1.0 "
 }
 
@@ -121,11 +122,15 @@ run_training() {
     local use_chat_template=$6
     local sys_prompt=$7
     local usr_prompt=$8
+    local tune_mm_vision=$9
 
     # Compose run_name: stem is dataset_use, append "-cft" if cft_prompt is not empty
     local run_name="${dataset_use}"
     if [[ -n "${cft_prompt}" ]]; then
         run_name="${run_name}-cft"
+    fi
+    if [[ tune_mm_vision == "True" ]]; then
+        run_name="${run_name}-tunevision"
     fi
     local model_stem=$(basename "${model_name_or_path}")
     run_name="${model_stem}-${run_name}"
@@ -184,6 +189,7 @@ model_name_or_path="Qwen/Qwen2.5-VL-3B-Instruct"
 # Must be uppercase for python.
 packing="True"
 use_chat_template="True"
+tune_mm_vision="False"
 
 while [[ $# -gt 0 ]]; do
     key="$1"
@@ -252,6 +258,14 @@ while [[ $# -gt 0 ]]; do
             use_chat_template="$2"
             shift 2
             ;;
+        --tune_mm_vision)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --tune_mm_vision requires a value"
+                exit 1
+            fi
+            tune_mm_vision="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1"
             exit 1
@@ -272,5 +286,6 @@ echo "Debug: packing='$packing'"
 echo "Debug: use_chat_template='$use_chat_template'"
 echo "Debug: sys_prompt='$sys_prompt'"
 echo "Debug: usr_prompt='$usr_prompt'"
+echo "Debug: tune_mm_vision='$tune_mm_vision'"
 
-run_training "$dataset_use" "$cft_prompt" "$requeue" "$model_name_or_path" "$packing" "$use_chat_template" "$sys_prompt" "$usr_prompt"
+run_training "$dataset_use" "$cft_prompt" "$requeue" "$model_name_or_path" "$packing" "$use_chat_template" "$sys_prompt" "$usr_prompt" "$tune_mm_vision"

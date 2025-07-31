@@ -1,9 +1,9 @@
-from qwenvl.data.conversation import MCCM, MNISTCM, VQACM, CaptionCM, ChexpertCM, ClassificationCM, OBVCM, TextConversationMaker
+from qwenvl.data.conversation import MCCM, MNISTCM, VQACM, CaptionCM, ChexpertCM, OBVCM, TextConversationMaker
 from ..utils import get_logger
 
 
 logger = get_logger(__name__)
-DATA_ROOT = "/scratch/xiaowenz"
+DATA_ROOT = "/scratch/xiaowenz/datasets"
 
 
 avail_datasets = {
@@ -41,18 +41,14 @@ avail_datasets = {
     "media_dir": f"{DATA_ROOT}/openbiomedvid/data/vid_processed",
     "ds_key": "withcomment/openbiomedvid",
     "cm": OBVCM,
-    "cm_kwargs": {
-      "qa_list_field": "qa_pairs",
-    }
+    "qa_list_field": "qa_pairs",
   },
   "openbiomedvid_qa": {
     "ds_dir": f"{DATA_ROOT}/openbiomedvid_qa/data/dataset",
     "media_dir": f"{DATA_ROOT}/openbiomedvid/data/vid_processed",
     "ds_key": "withcomment/openbiomedvid_qa",
     "cm": OBVCM,
-    "cm_kwargs": {
-      "qa_list_field": "qa_pairs",
-    }
+    "qa_list_field": "qa_pairs",
   },
   "openbiomedvid_cap": {
     "ds_dir": f"{DATA_ROOT}/openbiomedvid_cap/data/dataset",

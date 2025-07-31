@@ -1,37 +1,42 @@
 #!/bin/bash
-#SBATCH --job-name=infer-qwen2_5vl
-#SBATCH --nodes=1
-#SBATCH --mem=0
+#SBATCH --job-name=cft_vlm_infer
+#SBATCH -A aip-rahulgk
+#SBATCH -N 1
 #SBATCH --ntasks-per-node=1
-#SBATCH -c 32
-#SBATCH --qos=m3
-#SBATCH --gres=gpu:4
-#SBATCH --partition=a40
+#SBATCH --cpus-per-task=64
+#SBATCH --gres=gpu:l40s:4
+#SBATCH --mem=128G
+#SBATCH --time=1-00:00:00
+#SBATCH --output=logs/infer/%j/%N.log
+#SBATCH --error=logs/infer/%j/%N.err
 #SBATCH --open-mode=append
-#SBATCH --wait-all-nodes=1
-#SBATCH --output=logs/infer/%j.out
-#SBATCH --error=logs/infer/%j.err
-#SBATCH --requeue
-#SBATCH --time=4:00:00
-#SBATCH --signal=B:USR1@60
-#SBATCH --signal=B:TERM@60
 
-trap 'echo "[$(date)] SIGNAL $? received, requeueing"; \
-     scontrol requeue $SLURM_JOB_ID; \
-     exit 1' USR1 TERM
 
-source /fs01/projects/cft_vlm/.venv/bin/activate
-cd /fs01/projects/cft_vlm/finetune
+module load cuda
+source ~/venv/finetune/bin/activate
+cd ~/finetune
+setup_environment() {
 
-export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
-export MASTER_PORT=29500
-export WORLD_SIZE=$SLURM_NTASKS
-export RANK=$SLURM_PROCID
-export LOCAL_RANK=$SLURM_LOCALID
-export NPROC_PER_NODE=4
-export CUDA_HOME=/pkgs/cuda-12.4
-export PATH=$CUDA_HOME/bin:$PATH
-export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+    module load cuda
+    source ~/venv/finetune/bin/activate
+    cd ~/finetune
+
+    # Set distributed training environment variables
+    MASTER_ADDR=$(getent hosts $(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1) | awk '{ print $1 }')
+    MASTER_PORT=29500
+    NPROC_PER_NODE=$SLURM_GPUS_ON_NODE
+
+    # Sanity checking
+    echo "Master host: $MASTER_HOSTNAME"
+    echo "MASTER_ADDR=$MASTER_ADDR"
+    echo "MASTER_PORT=$MASTER_PORT"
+    echo "Node ID: $SLURM_NODEID"
+
+    # Set env variables
+    export MASTER_ADDR=$MASTER_ADDR
+    export MASTER_PORT=$MASTER_PORT
+    export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True 
+}
 
 # Default values
 dataset_use=""
@@ -163,19 +168,11 @@ args="
 
 echo "Starting evaluation process in the background..."
 torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.predict ${args}
-PROC_ID=$!
-
-echo "Waiting for process $PROC_ID. The script can now receive signals."
-wait $PROC_ID
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -ne 0 ]; then
-    if [ "$requeue" = false ]; then
-        echo "Prediction failed with exit code $EXIT_CODE, not requeuing job."
-        exit 1
-    fi
-    echo "Prediction crashed with exit code $EXIT_CODE, resubmitting job."
-    scontrol requeue $SLURM_JOB_ID
+    echo "Prediction failed with exit code $EXIT_CODE, not requeuing job."
+    exit 1
 else
     echo "Prediction completed successfully."
 fi

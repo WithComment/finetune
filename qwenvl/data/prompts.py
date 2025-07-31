@@ -25,6 +25,7 @@ Apply this focused analysis of space and time to the video to find the precise e
   ],
   'spatial': "Focus your attention on the primary subject and any objects it directly interacts with. Isolate key visual details.",
   'temporal': "Focus your attention on the sequence of frames showing significant change. Prioritize the frames capturing the action's beginning, peak, and conclusion.",
+  'video': "Focus attention on the primary subject's main action. Prioritize the temporal sequence from the action's start to its conclusion, emphasizing the peak. Within this sequence, isolate the key visual details of the subject and its direct interactions."
 }
 
 USR_PROMPTS = {

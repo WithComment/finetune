@@ -116,6 +116,7 @@ run_training() {
     local use_chat_template=$5
     local sys_prompt=$6
     local usr_prompt=$7
+    local tune_mm_vision=$8
 
     # Compose run_name: stem is dataset_use, append "-cft" if cft_prompt is not empty
     local run_name="${dataset_use}"
@@ -134,7 +135,7 @@ run_training() {
 
     # Get all arguments
     local model_args
-    model_args=$(get_model_args "${model_name_or_path}")
+    model_args=$(get_model_args "${model_name_or_path}" "${tune_mm_vision}")
     local data_args
     data_args=$(get_data_args "${dataset_use}" "${packing}")
     local proc_args
@@ -266,4 +267,4 @@ echo "Debug: sys_prompt='$sys_prompt'"
 echo "Debug: usr_prompt='$usr_prompt'"
 echo "Debug: tune_mm_vision='$tune_mm_vision'"
 
-run_training "$dataset_use" "$cft_prompt" "$model_name_or_path" "$packing" "$use_chat_template" "$sys_prompt" "$usr_prompt"
+run_training "$dataset_use" "$cft_prompt" "$model_name_or_path" "$packing" "$use_chat_template" "$sys_prompt" "$usr_prompt" "$tune_mm_vision"

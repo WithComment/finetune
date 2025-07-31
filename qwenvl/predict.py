@@ -23,6 +23,7 @@ from .module import DatasetWrapper
 logger = get_logger(__name__)
 transformers.logging.set_verbosity_error()
 
+
 def log_header(
     model_path: str,
     data_args: DataArguments,
@@ -64,10 +65,10 @@ def _load_model_and_processor(
 
 def load_pretrained_qwen(model_path, device):
   """Load the Qwen model and processor."""
-  checkpoint_dir = Path(os.environ.get('CHECKPOINT_DIR', ''))
+  checkpoint_dir = Path("/scratch/xiaowenz/checkpoints/")
   if (checkpoint_dir / model_path).exists():
     model_path = checkpoint_dir / model_path
-  
+
   try:
     model, processor = _load_model_and_processor(model_path, device)
   except OSError as e:
@@ -95,9 +96,11 @@ def get_gpu_indices(
   end_idx = start_idx + items_per_gpu
   return range(start_idx, end_idx, batch_size)
 
+
 def drop_non_json_fields(item: dict) -> dict:
   """Drop fields that are not JSON serializable."""
   return {k: v for k, v in item.items() if isinstance(v, (str, int, float, bool, list, dict))}
+
 
 def _infer(
     model,
@@ -121,7 +124,8 @@ def _infer(
           **gen_config
       )
 
-    outputs = processor.tokenizer.batch_decode(output_ids, skip_special_tokens=True)
+    outputs = processor.tokenizer.batch_decode(
+      output_ids, skip_special_tokens=True)
     for item, output in zip(batch, outputs):
       output = output.split("assistant")[-1].strip().strip("\n")
       # Unpack item.
@@ -186,7 +190,8 @@ def generate_output(
   gpu_result = _infer(
       model,
       benchmark,
-      gpu_indices=get_gpu_indices(benchmark, world_size, local_rank, portion, batch_size),
+      gpu_indices=get_gpu_indices(
+        benchmark, world_size, local_rank, portion, batch_size),
       collate_fn=collate_fn,
       gen_config=gen_config,
       processor=processor,
@@ -206,7 +211,7 @@ def predict(
     proc_args: ProcessingArguments,
 ):
   """Run inference on the benchmark using Qwen2-VL."""
-  
+
   dist.init_process_group(backend="nccl", timeout=timedelta(hours=1))
 
   world_size = dist.get_world_size()
@@ -216,25 +221,26 @@ def predict(
 
   ds_dir = Path(avail_datasets[data_args.dataset_use]['ds_dir'])
   if model_path.name.startswith('checkpoint-'):
-    checkpoint_name = '-'.join([model_path.parts[-2], model_path.name.split('-')[-1]])
+    checkpoint_name = '-'.join([model_path.parts[-2],
+                               model_path.name.split('-')[-1]])
   else:
     checkpoint_name = model_path.name
 
   output_dir = ds_dir.parent.parent / 'results' / data_args.split / checkpoint_name
-  
+
   custom_prompt = []
   if proc_args.sys_prompt:
     custom_prompt.append(f"sys_{proc_args.sys_prompt.replace(',', '_')}")
   if proc_args.usr_prompt:
     custom_prompt.append(f"usr_{proc_args.usr_prompt.replace(',', '_')}")
-  
+
   if custom_prompt:
     output_dir = output_dir / "_".join(custom_prompt)
-  
+
   global logger
   logger = get_logger(__name__, log_file=output_dir / 'predict.log')
   module.set_logger(logger)
-  
+
   if local_rank == 0:
     log_header(model_path, data_args, output_dir, world_size, logger)
 
@@ -279,14 +285,14 @@ if __name__ == "__main__":
       data_args,
       proc_args,
   )
-  
+
   if 'chexpert' in data_args.dataset_use:
     filter = chexpert_filter
   elif 'mc' in data_args.dataset_use:
     filter = mc_filter
   else:
     filter = yes_no_filter
-    
+
   if dist.get_rank() == 0:
     summary = evaluate(
         output_dir / 'results.jsonl',

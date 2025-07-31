@@ -14,6 +14,7 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 
+import json
 from pathlib import Path
 import datasets
 from transformers.trainer_utils import get_last_checkpoint
@@ -50,7 +51,7 @@ def set_model(model, model_args):
     for n, p in model.langauge_model.named_parameters():
       p.requires_grad = False
     model.lm_head.requires_grad = False
-    
+
   if model_args.tune_mm_vision:
     for n, p in model.visual.named_parameters():
       p.requires_grad = True
@@ -95,6 +96,7 @@ def set_min_lr(training_args: TrainingArguments):
         training_args.learning_rate
   return training_args
 
+
 def create_datamodule(
     processor: transformers.AutoProcessor,
     data_args: DataArguments,
@@ -107,7 +109,7 @@ def create_datamodule(
       proc_args=proc_args,
       rank=rank,
   )
-  
+
   ds, collate_fn = None, None
   if rank == 0:
     ds, collate_fn = create_module(
@@ -128,8 +130,9 @@ def create_datamodule(
     )
   return ds, collate_fn
 
+
 def train(attn_implementation="flash_attention_2"):
-  
+
   parser = transformers.HfArgumentParser((
       ModelArguments,
       DataArguments,
@@ -144,8 +147,9 @@ def train(attn_implementation="flash_attention_2"):
       model_args.model_name_or_path,
       use_fast=True,
   )
-  
-  training_args.deepspeed = "/projects/cft_vlm/finetune/qwenvl/scripts/zero3.json"
+
+  with open(Path(__file__).parent / "scripts/zero3.json", "r") as f:
+    training_args.deepspeed = json.load(f)
 
   custom_prompt = []
   if proc_args.cft_prompt:
@@ -154,17 +158,18 @@ def train(attn_implementation="flash_attention_2"):
     custom_prompt.append(f"sys_{proc_args.sys_prompt.replace(',', '_')}")
   if proc_args.usr_prompt:
     custom_prompt.append(f"usr_{proc_args.usr_prompt.replace(',', '_')}")
-  
+
   output_dir = Path(training_args.output_dir)
   if custom_prompt:
-    output_dir = output_dir.with_name("_".join([output_dir.name, "_".join(custom_prompt)]))
-  
+    output_dir = output_dir.with_name(
+      "_".join([output_dir.name, "_".join(custom_prompt)]))
+
   global logger
   logger = get_logger(__name__, log_file=output_dir / 'training.log')
   module.set_logger(logger)
   utils.set_logger(logger)
   training_args.output_dir = str(output_dir)
-  
+
   logger.info(f"Output file {training_args.output_dir}")
 
   processor = set_processor(processor, proc_args, data_args)
@@ -174,15 +179,15 @@ def train(attn_implementation="flash_attention_2"):
       data_args=data_args,
       proc_args=proc_args,
   )
-  
+
   model_class = Qwen2_5_VLForConditionalGeneration
-    
+
   model = model_class.from_pretrained(
       model_args.model_name_or_path,
       attn_implementation=attn_implementation,
       torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
   )
-  
+
   model = set_model(model, model_args)
   print_trainable_parameters_visual(model.visual)
   print_trainable_parameters(model.model)
@@ -198,8 +203,9 @@ def train(attn_implementation="flash_attention_2"):
       train_dataset=ds,
       data_collator=collate_fn,
   )
-  rank0_print(f"Trainer save_strategy: {trainer.args.save_strategy, trainer.args.save_steps, trainer.args.save_total_limit}")
-  
+  rank0_print(
+    f"Trainer save_strategy: {trainer.args.save_strategy, trainer.args.save_steps, trainer.args.save_total_limit}")
+
   last_checkpoint = None
   if os.path.isdir(training_args.output_dir):
     last_checkpoint = get_last_checkpoint(training_args.output_dir)
@@ -216,10 +222,11 @@ def train(attn_implementation="flash_attention_2"):
   # When training completes normally without preemption.
   trainer.save_state()
   trainer.save_model(training_args.output_dir)
-  
+
   if trainer.is_world_process_zero():
     processor.save_pretrained(training_args.output_dir)
-    
+
+
 if __name__ == "__main__":
   torch.set_num_threads(1)
   train(attn_implementation="flash_attention_2")

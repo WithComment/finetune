@@ -1,48 +1,43 @@
 #!/bin/bash
-#SBATCH --job-name=sft_qwen2.5-vl
-#SBATCH --nodes=1
-#SBATCH --mem=0
+#SBATCH --job-name=cft_vlm
+#SBATCH -A aip-rahulgk
+#SBATCH -N 1
 #SBATCH --ntasks-per-node=1
-#SBATCH -c 32
-#SBATCH --qos=m
-#SBATCH -x gpu035
-#SBATCH --gres=gpu:4
-#SBATCH --partition=a40
+#SBATCH --cpus-per-task=64
+#SBATCH --gres=gpu:l40s:4
+#SBATCH --mem=128G
+#SBATCH --time=1-00:00:00
+#SBATCH --output=logs/train/%j/%N.log
+#SBATCH --error=logs/train/%j/%N.err
 #SBATCH --open-mode=append
-#SBATCH --wait-all-nodes=1
-#SBATCH --output=logs/sft/%j.out
-#SBATCH --error=logs/sft/%j.err
-#SBATCH --requeue
-#SBATCH --time=12:00:00
-#SBATCH --signal=B:USR1@60
-#SBATCH --signal=B:TERM@60
+
 
 date;hostname;pwd
 
 # Common setup function
 setup_environment() {
-    trap 'echo "[$(date)] SIGNAL $? received, requeueing"; \
-         scontrol requeue $SLURM_JOB_ID; \
-         exit 1' USR1 TERM
 
-    source ~/
-    cd /fs01/projects/cft_vlm/finetune
+    module load cuda
+    source ~/venv/finetune/bin/activate
+    cd ~/finetune
 
     # Set distributed training environment variables
-    export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
-    export MASTER_PORT=29500
-    export WORLD_SIZE=$SLURM_NTASKS
-    export RANK=$SLURM_PROCID
-    export LOCAL_RANK=$SLURM_LOCALID
-    export NPROC_PER_NODE=$SLURM_NTASKS_PER_NODE
-    export CUDA_HOME=/pkgs/cuda-12.4
-    export PATH=$CUDA_HOME/bin:$PATH
-    export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
-    gpu_count=${SLURM_GPUS_ON_NODE:-$SLURM_NTASKS_PER_NODE}
-    export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-    export CUDA_LAUNCH_BLOCKING=1
-    export TORCH_CUDA_USE_DSA=1
+    MASTER_ADDR=$(getent hosts $(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1) | awk '{ print $1 }')
+    MASTER_PORT=29500
+    NPROC_PER_NODE=$SLURM_GPUS_ON_NODE
+
+    # Sanity checking
+    echo "Master host: $MASTER_HOSTNAME"
+    echo "MASTER_ADDR=$MASTER_ADDR"
+    echo "MASTER_PORT=$MASTER_PORT"
+    echo "Node ID: $SLURM_NODEID"
+
+    # Set env variables
+    export MASTER_ADDR=$MASTER_ADDR
+    export MASTER_PORT=$MASTER_PORT
+    export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True 
 }
+
 # Common model arguments
 get_model_args() {
     local model_name_or_path=$1
@@ -60,15 +55,15 @@ get_data_args() {
     --dataset_use ${dataset_use} \
     --packing ${packing} \
     --split train \
-    --model_max_length 6000 \
-    --portion 1.0 "
+    --model_max_length 8000 \
+    --portion 1.0"
 }
 
 get_proc_args() {
     local cft_prompt=$1
     local use_chat_template=$2
     local args="--use_chat_template ${use_chat_template}"
-    
+
     # Only add cft_prompt if it's not empty
     if [[ -n "${cft_prompt}" ]]; then
         args="${args} --cft_prompt ${cft_prompt}"
@@ -79,7 +74,7 @@ get_proc_args() {
     if [[ -n "${usr_prompt}" ]]; then
         args="${args} --usr_prompt ${usr_prompt}"
     fi
-    
+
     echo "${args}"
 }
 
@@ -115,12 +110,11 @@ get_base_train_args() {
 run_training() {
     local dataset_use=$1
     local cft_prompt=$2
-    local requeue=$3
-    local model_name_or_path=$4
-    local packing=$5
-    local use_chat_template=$6
-    local sys_prompt=$7
-    local usr_prompt=$8
+    local model_name_or_path=$3
+    local packing=$4
+    local use_chat_template=$5
+    local sys_prompt=$6
+    local usr_prompt=$7
 
     # Compose run_name: stem is dataset_use, append "-cft" if cft_prompt is not empty
     local run_name="${dataset_use}"
@@ -129,7 +123,7 @@ run_training() {
     fi
     local model_stem=$(basename "${model_name_or_path}")
     run_name="${model_stem}-${run_name}"
-    local output_dir="/scratch/xiaowenz/checkpoints/${run_name}"
+    local output_dir="${SCRATCH}/checkpoints/${run_name}"
 
     # Create output directory
     mkdir -p "${output_dir}"
@@ -150,21 +144,16 @@ run_training() {
         ${proc_args} \
         ${train_args}"
 
-    echo "Starting training process in the background..."
-    TORCH_CUDA_USE_DSA=1 torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.train ${args} &
-    PROC_ID=$!
+    echo "Starting training process..."
+    torchrun \
+    --nnodes=$SLURM_JOB_NUM_NODES \
+    --nproc_per_node=$NPROC_PER_NODE \
+    -m qwenvl.train ${args}
 
-    echo "Waiting for process $PROC_ID. The script can now receive signals."
-    wait $PROC_ID
     EXIT_CODE=$?
 
     if [ $EXIT_CODE -ne 0 ]; then
-        if [ "$requeue" = false ]; then
-            echo "Training failed with exit code $EXIT_CODE, not requeuing job."
-            exit 1
-        fi
-        echo "Training crashed with exit code $EXIT_CODE, resubmitting job."
-        scontrol requeue $SLURM_JOB_ID
+        echo "Training crashed with exit code $EXIT_CODE."
     else
         echo "Training completed successfully."
     fi
@@ -179,7 +168,6 @@ cft_prompt=""
 usr_prompt=""
 sys_prompt=""
 # lower case for bash.
-requeue="false"
 model_name_or_path="Qwen/Qwen2.5-VL-3B-Instruct"
 # Must be uppercase for python.
 packing="True"
@@ -220,14 +208,6 @@ while [[ $# -gt 0 ]]; do
             usr_prompt="$2"
             shift 2
             ;;
-        --requeue)
-            if [[ $# -lt 2 ]]; then
-                echo "Error: --requeue requires a value"
-                exit 1
-            fi
-            requeue="$2"
-            shift 2
-            ;;
         --model_name_or_path)
             if [[ $# -lt 2 ]]; then
                 echo "Error: --model_name_or_path requires a value"
@@ -266,11 +246,10 @@ fi
 
 echo "Debug: dataset_use='$dataset_use'"
 echo "Debug: cft_prompt='$cft_prompt'"
-echo "Debug: requeue='$requeue'"
 echo "Debug: model_name_or_path='$model_name_or_path'"
 echo "Debug: packing='$packing'"
 echo "Debug: use_chat_template='$use_chat_template'"
 echo "Debug: sys_prompt='$sys_prompt'"
 echo "Debug: usr_prompt='$usr_prompt'"
 
-run_training "$dataset_use" "$cft_prompt" "$requeue" "$model_name_or_path" "$packing" "$use_chat_template" "$sys_prompt" "$usr_prompt"
+run_training "$dataset_use" "$cft_prompt" "$model_name_or_path" "$packing" "$use_chat_template" "$sys_prompt" "$usr_prompt"

@@ -1,0 +1,2 @@
+# bash qwenvl/scripts/train.sh --dataset_use openbiomedvid_qa --sys_prompt default,temporal --packing False
+sbatch qwenvl/scripts/train_multinode.sh --dataset_use openbiomedvid_qa --sys_prompt default,temporal --packing False

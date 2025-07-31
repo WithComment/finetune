@@ -1,56 +1,63 @@
+
+Modify this deepspeed zero stage 3 config to ues parameter offloading.
 {
-  "fp16": {
-    "enabled": "auto",
-    "loss_scale": 0,
-    "loss_scale_window": 1000,
-    "initial_scale_power": 16,
-    "hysteresis": 2,
-    "min_loss_scale": 1
-  },
   "bf16": {
-    "enabled": "auto"
+      "enabled": true
   },
-  "optimizer": {
-    "type": "AdamW",
-    "params": {
-      "lr": "auto",
-      "betas": "auto",
-      "eps": "auto",
-      "weight_decay": "auto"
-    }
-  },
-  "scheduler": {
-    "type": "WarmupLR",
-    "params": {
-      "warmup_min_lr": "auto",
-      "warmup_max_lr": "auto",
-      "warmup_num_steps": "auto"
-    }
-  },
-  "zero_optimization": {
-    "stage": 3,
-    "offload_optimizer": {
-      "device": "cpu",
-      "pin_memory": true
-    },
-    "offload_param": {
-      "device": "cpu",
-      "pin_memory": true
-    },
-    "overlap_comm": true,
-    "contiguous_gradients": true,
-    "sub_group_size": 1e9,
-    "reduce_bucket_size": "auto",
-    "stage3_prefetch_bucket_size": "auto",
-    "stage3_param_persistence_threshold": "auto",
-    "stage3_max_live_parameters": 1e9,
-    "stage3_max_reuse_distance": 1e9,
-    "gather_16bit_weights_on_model_save": true
-  },
-  "gradient_accumulation_steps": "auto",
-  "gradient_clipping": "auto",
-  "train_batch_size": "auto",
   "train_micro_batch_size_per_gpu": "auto",
-  "steps_per_print": 1e5,
-  "wall_clock_breakdown": false
+  "zero_optimization": {
+      "stage": 3,
+      "offload_optimizer": {
+          "device": "none"
+      },
+      "offload_param": {
+          "device": "none"
+      },
+      "overlap_comm": true,
+      "contiguous_gradients": true,
+      "reduce_bucket_size": 5e8,
+      "stage3_prefetch_bucket_size": 5e8,
+      "stage3_param_persistence_threshold": 0,
+      "stage3_max_live_parameters": 0,
+      "stage3_max_reuse_distance": 0,
+      "gather_16bit_weights_on_model_save": true
+  }
+}
+
+To enable parameter offloading in your DeepSpeed ZeRO Stage 3 configuration, you need to change the offload_param device from "none" to either "cpu" or "nvme". Here's the modified config:
+
+
+DeepSpeed ZeRO Stage 3 Config with Parameter Offloading
+Code 
+The key change is in the offload_param section where I changed "device": "none" to "device": "cpu". This will offload parameters to CPU memory, which can significantly reduce GPU memory usage at the cost of some performance overhead due to data transfers between CPU and GPU.
+
+If you have NVMe storage available and want even more aggressive offloading, you could use "device": "nvme" instead, but this typically has higher latency than CPU offloading.
+
+You might also want to consider enabling optimizer offloading by changing offload_optimizer device to "cpu" if you need
+
+
+
+
+{
+  "bf16": {
+      "enabled": true
+  },
+  "train_micro_batch_size_per_gpu": "auto",
+  "zero_optimization": {
+      "stage": 3,
+      "offload_optimizer": {
+          "device": "none"
+      },
+      "offload_param": {
+          "device": "cpu"
+      },
+      "overlap_comm": true,
+      "contiguous_gradients": true,
+      "reduce_bucket_size": 5e8,
+      "stage3_prefetch_bucket_size": 5e8,
+      "stage3_param_persistence_threshold": 0,
+      "stage3_max_live_parameters": 0,
+      "stage3_max_reuse_distance": 0,
+      "gather_16bit_weights_on_model_save": true
+  }
 }

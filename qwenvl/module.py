@@ -1,6 +1,6 @@
 import itertools
 import random
-from typing import Callable
+from typing import Any, Callable
 import datasets
 from transformers import AutoProcessor
 from qwenvl.argument import DataArguments, ProcessingArguments
@@ -12,20 +12,23 @@ from qwenvl.data import avail_datasets
 from qwenvl.utils import get_logger
 
 logger = get_logger(__name__)
+
+
 def set_logger(new_logger):
   global logger
   logger = new_logger
+
 
 class DatasetWrapper:
   def __init__(self, ds: datasets.Dataset, bins: list | None):
     self.ds = ds
     self.bins = bins
-  
+
   def __getitem__(self, idx: int) -> list[dict]:
     if isinstance(idx, slice):
       return [[self.ds[i] for i in _bin] for _bin in self.bins[idx]]
     return [self.ds[i] for i in self.bins[idx]]
-  
+
   def __len__(self) -> int:
     return len(self.bins)
 
@@ -41,13 +44,14 @@ def create_module(
   Assembles everything, from arguments and dataset and preprocess strategies, into a module,
   as well as a collate function, that will be used directly for the trainer.
   """
-  logger.info(f"Creating module for dataset {data_args.dataset_use} with split {data_args.split}")
+  logger.info(
+    f"Creating module for dataset {data_args.dataset_use} with split {data_args.split}")
   if rank == 0:
     ds = datasets.load_dataset(avail_datasets[data_args.dataset_use]['ds_key'])
   else:
-    ds = datasets.load_from_disk(avail_datasets[data_args.dataset_use]['ds_dir'])
-    
-  
+    ds = datasets.load_from_disk(
+      avail_datasets[data_args.dataset_use]['ds_dir'])
+
   for strategy in preprocess_strategies:
     logger.info(f"Applying strategy {strategy.__class__.__name__}")
     ds = strategy(ds)
@@ -58,25 +62,24 @@ def create_module(
     bins = pack_dataset(ds, data_args.model_max_length)
   else:
     bins = [[i] for i in range(len(ds))]
-  
+
   ds = DatasetWrapper(ds, bins)
-  
+
   def collate_fn(batch):
     conv = [cp(item) for item in batch]
     return ip(conv)
-  
+
   if rank == 0:
     batch = ds[:1]
     conv = [cp(item[:2]) for item in batch]
     text = ip.get_text(conv, text_only=True)
     inputs = ip(conv)
-    assert (inputs.input_ids == ip.tokenizer.convert_tokens_to_ids(IMAGE_PAD)).sum() >= 64
     labels = inputs['labels']
     _labels = []
     for item in labels:
       _labels.append(item[item != ip.config.ignore_idx])
     target_text = ip.tokenizer.batch_decode(_labels)
-    
+
     logger.info(f"Example from dataset: {batch}")
     logger.info(f"Example after conversation processing: {conv}")
     lines = text[0].split('\n')
@@ -84,7 +87,7 @@ def create_module(
     for line in lines[1:]:
       logger.info(f"{' ' * 20}{line}")
     logger.info(f"Example target text: {target_text}")
-    
+
     logger.info(f"Finished creating data module.")
   return ds, collate_fn
 
@@ -99,20 +102,20 @@ def create_strategies(
   Create preprocess strategies and conversation maker.
   """
   ds_config = avail_datasets[data_args.dataset_use]
-  
+
   base_cm = ds_config['cm'](
     for_training=data_args.split == 'train',
-    **ds_config.get('cm_kwargs', {})
+    **ds_config
   )
   modifiers = []
-  
+
   for cft_prompt_name in proc_args.cft_prompt.split(",")[::-1]:
     if cft_prompt_name in CFT_PROMPTS:
       cft_prompts = CFT_PROMPTS[cft_prompt_name]
       modifiers.append(AllPromptAdder(cft_prompts))
     else:
       logger.warning(f"CFT prompt {cft_prompt_name} not found, not using it.")
-      
+
   for usr_prompt_name in proc_args.usr_prompt.split(",")[::-1]:
     if usr_prompt_name in USR_PROMPTS:
       usr_prompt = USR_PROMPTS[usr_prompt_name]
@@ -127,18 +130,20 @@ def create_strategies(
       modifiers.append(FirstPromptAdder(sys_prompt))
       logger.info(f"Using system prompt {sys_prompt_name}")
     else:
-      logger.warning(f"System prompt {sys_prompt_name} not found, not using it.")
-    
+      logger.warning(
+        f"System prompt {sys_prompt_name} not found, not using it.")
+
   cp = ConversationProcessor(
       conversation_maker=base_cm,
       conversation_modifiers=modifiers,
+      **ds_config
   )
-  
+
   ip = InputProcessor(
       processor=processor,
       config=proc_args,
   )
-  
+
   preprocess_strategies = []
   if rank == 0:
     if 'mnist' not in data_args.dataset_use:
@@ -152,10 +157,12 @@ def create_strategies(
       ))
       if data_args.split == 'train':
         preprocess_strategies.append(GetNumTokensStrategy(cm=cp, processor=ip))
-        preprocess_strategies.append(FilterStrategy(lambda x: x['num_tokens'] <= data_args.model_max_length))
+        preprocess_strategies.append(FilterStrategy(
+          lambda x: x['num_tokens'] <= data_args.model_max_length))
       else:
-        preprocess_strategies.append(FilterStrategy(lambda x: x['num_media_tokens'] <= data_args.model_max_length))
-        
+        preprocess_strategies.append(FilterStrategy(
+          lambda x: x['num_media_tokens'] <= data_args.model_max_length))
+
     preprocess_strategies.append(SaveStrategy(ds_config['ds_dir'], True))
-  
+
   return preprocess_strategies, cp, ip

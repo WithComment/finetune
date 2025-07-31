@@ -25,7 +25,7 @@ setup_environment() {
          scontrol requeue $SLURM_JOB_ID; \
          exit 1' USR1 TERM
 
-    source /fs01/projects/cft_vlm/.venv/bin/activate
+    source ~/
     cd /fs01/projects/cft_vlm/finetune
 
     # Set distributed training environment variables
@@ -134,7 +134,7 @@ run_training() {
     fi
     local model_stem=$(basename "${model_name_or_path}")
     run_name="${model_stem}-${run_name}"
-    local output_dir="/projects/cft_vlm/.checkpoint/${run_name}"
+    local output_dir="/scratch/xiaowenz/checkpoints/${run_name}"
 
     # Create output directory
     mkdir -p "${output_dir}"

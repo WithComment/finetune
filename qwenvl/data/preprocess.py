@@ -15,13 +15,15 @@ from qwenvl.utils import get_logger
 
 logger = get_logger(__name__)
 
+
 class PreprocessStrategy(ABC):
   num_proc: int = 32
-  def __init__(self, num_proc: int = None):
-    if num_proc is not None:
-      self.num_proc = num_proc
-      
-      
+  load_from_cache_file: bool = True
+
+  def __init__(self, num_proc: int = 32, load_from_cache: bool = True):
+    self.num_proc = num_proc
+    self.load_from_cache_file = load_from_cache
+
   @abstractmethod
   def __call__(self, ds: datasets.Dataset):
     pass
@@ -54,10 +56,12 @@ class VerifyMediaStrategy(PreprocessStrategy):
       self.verify_media,
       num_proc=self.num_proc,
       desc="Verifying media content",
+      load_from_cache_file=self.load_from_cache_file,
     )
 
+
 class GetNumMediaTokensStrategy(PreprocessStrategy):
-  
+
   def __init__(self, get_content_fn: Callable, config: ProcessingArguments, **kwargs):
     super().__init__(**kwargs)
     self.get_content_fn = get_content_fn
@@ -68,7 +72,7 @@ class GetNumMediaTokensStrategy(PreprocessStrategy):
       _, images, videos = self.get_content_fn(item)
 
       num_tokens = 0
-      
+
       for img in images:
         img = get_image(img)
         h, w, h_tokens, w_tokens = smart_resize(
@@ -107,10 +111,13 @@ class GetNumMediaTokensStrategy(PreprocessStrategy):
       self.get_num_content_tokens,
       num_proc=self.num_proc,
       desc="Counting media tokens",
+      load_from_cache_file=self.load_from_cache_file,
     )
-    total_media_tokens = sum(sum(split['num_media_tokens']) for split in ds.values())
+    total_media_tokens = sum(
+      sum(split['num_media_tokens']) for split in ds.values())
     total_len = sum(len(split) for split in ds.values())
-    logger.info(f"Average number of media tokens: {total_media_tokens / total_len:.2f}")
+    logger.info(
+      f"Average number of media tokens: {total_media_tokens / total_len:.2f}")
     return ds
 
 
@@ -124,13 +131,13 @@ class GetNumTokensStrategy(PreprocessStrategy):
     super().__init__(**kwargs)
     self.cm = cm
     self.processor = processor
-    
+
   def get_num_tokens(self, item):
     num_text_tokens = self.processor.get_num_text_tokens(self.cm([item]))
     num_media = item['num_media']
     item['num_tokens'] = num_text_tokens - num_media + item['num_media_tokens']
     return item
-  
+
   def __call__(self, ds: datasets.Dataset):
 
     logger.info("Counting total tokens for item.")
@@ -138,8 +145,8 @@ class GetNumTokensStrategy(PreprocessStrategy):
         self.get_num_tokens,
         num_proc=self.num_proc,
         desc="Counting total tokens",
+        load_from_cache_file=self.load_from_cache_file,
     )
-
 
 
 class FilterStrategy(PreprocessStrategy):
@@ -157,12 +164,15 @@ class FilterStrategy(PreprocessStrategy):
         fn,
         num_proc=self.num_proc,
         desc=f"Filtering dataset with {fn.__name__}",
+        load_from_cache_file=self.load_from_cache_file,
       )
       removed = total - len(ds)
-      logger.info(f"{fn.__name__} filtered out {removed} ({100 * removed / total:.2f}%) items from the dataset.")
-    
+      logger.info(
+        f"{fn.__name__} filtered out {removed} ({100 * removed / total:.2f}%) items from the dataset.")
+
     removed = init_len - len(ds)
-    logger.info(f"Total filtered out {removed} ({100 * removed / init_len:.2f}%) items from the dataset.")
+    logger.info(
+      f"Total filtered out {removed} ({100 * removed / init_len:.2f}%) items from the dataset.")
     return ds
 
 
@@ -178,33 +188,29 @@ class SaveStrategy(PreprocessStrategy):
     if not self.save_path.exists():
       ds.save_to_disk(self.save_path)
     else:
-      old_ds = datasets.load_from_disk(self.save_path)
-      for split in ds:
-        if split not in old_ds or ds[split]._fingerprint != old_ds[split]._fingerprint:
-          logger.info(f"Dataset split '{split}' DNE or has changed. Overwriting.")
-          break
-      else:
-        logger.info(f"Dataset already exists at {self.save_path} and is unchanged. Skipping save.")
-        return ds
-
       ds.save_to_disk(self.temp_path)
       logger.info(f"Temporary dataset saved to {self.temp_path}.")
-      shutil.rmtree(self.save_path)
+
+      def onerror(func, path, exc_info):
+        logger.error(f"Error removing {path}: {exc_info}")
+
+      shutil.rmtree(self.save_path, onerror=onerror)
       logger.info(f"Removed existing dataset at {self.save_path}.")
       shutil.move(self.temp_path, self.save_path)
     logger.info(f"Dataset saved to {self.save_path}.")
     return ds
-  
+
 
 def pack_dataset(ds: datasets.Dataset, bin_capacity: int):
   if 'num_tokens' not in ds.features:
     raise ValueError("Dataset must have 'num_tokens' field for packing.")
-  
+
   logger.info("Packing dataset into bins.")
   bins = fast_best_fit_decreasing(ds['num_tokens'], bin_capacity)
   logger.info(f"Packed dataset into {len(bins)} bins.")
-  
+
   logger.info(f"|   Max samples per bin: {max(len(bin) for bin in bins)}")
   logger.info(f"|   Min samples per bin: {min(len(bin) for bin in bins)}")
-  logger.info(f"|   Average samples per bin: {len(ds) / len(bins) if bins else 0:.2f}")
+  logger.info(
+    f"|   Average samples per bin: {len(ds) / len(bins) if bins else 0:.2f}")
   return bins

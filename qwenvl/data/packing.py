@@ -1,11 +1,4 @@
-import json
-import os
-import time
-import binpacking
-import datasets
-from torch.utils.data import Dataset
 from tqdm import tqdm
-from transformers import AutoProcessor
 """
 This module implements a fast version of the Best Fit Decreasing algorithm for bin packing.
 It uses a segment tree data structure to efficiently find the best bin for each item.
@@ -22,6 +15,7 @@ from numba import njit
 from ..utils import get_logger
 
 logger = get_logger(__name__)
+
 
 @njit(cache=True)
 def get_height(num_bins: int) -> int:
@@ -128,7 +122,7 @@ def insert(num_items: int, num_bins: int, bins_remaining_capacity: np.ndarray, s
 
 
 def fast_best_fit_decreasing(items, bin_capacity, batch_size=50000, progress_bar=False):
-  
+
   def _fast_best_fit_decreasing(items):
     num_items = 0
     num_bins = 0
@@ -143,19 +137,20 @@ def fast_best_fit_decreasing(items, bin_capacity, batch_size=50000, progress_bar
       bin_index, num_items, num_bins = insert(
           num_items, num_bins, bins_remaining_capacity, segment_tree, item)
       bin_indices.append(bin_index)
-      
+
     # W build the bins to items mapping
     bins_to_items = [[] for _ in range(num_bins)]
     for item_index, bin_index in enumerate(bin_indices):
       bins_to_items[bin_index].append(indexed_items[item_index][0])
 
     return bins_to_items
-  
+
   bins = list()
   for slice_start in range(0, len(items), batch_size):
     slice_end = min(slice_start + batch_size, len(items))
     slice_items = items[slice_start:slice_end]
     slice_bins = _fast_best_fit_decreasing(slice_items)
-    slice_bins = [[slice_start + i for i in slice_bin] for slice_bin in slice_bins]
+    slice_bins = [[slice_start + i for i in slice_bin]
+                  for slice_bin in slice_bins]
     bins.extend(slice_bins)
   return bins

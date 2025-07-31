@@ -1,18 +1,11 @@
-import json
 import math
 from pathlib import Path
 import subprocess
-from typing import Callable
 import cv2
-import datasets
-from decord import VideoReader
 import numpy as np
 from PIL import Image
-import webvtt
 
 import torch
-
-from transformers import AutoProcessor, PreTrainedTokenizer, Qwen2_5_VLProcessor
 
 import base64
 from io import BytesIO
@@ -55,16 +48,17 @@ def get_vid_frames_opencv(
   Processes video using OpenCV. Raises an exception on failure.
   """
   cap = cv2.VideoCapture(video_path)
-  
+
   total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
   avg_fps = cap.get(cv2.CAP_PROP_FPS)
 
   if total_frames == 0 or avg_fps == 0:
     cap.release()
-    raise ValueError(f"Video file {video_path} has zero frames or zero FPS with OpenCV.")
+    raise ValueError(
+      f"Video file {video_path} has zero frames or zero FPS with OpenCV.")
   if is_checking:
     return
-  
+
   video_length = total_frames / avg_fps
   if all_frames:
     target_frames = total_frames
@@ -74,14 +68,14 @@ def get_vid_frames_opencv(
         max(num_frames_to_sample, vid_proc_args.video_min_frames),
         vid_proc_args.video_max_frames
     )
-    
+
   frames = []
   if is_counting:
     ret, frame = cap.read()
     if ret:
       frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
     frames = frames * target_frames
-  
+
   else:
     frame_idx = np.linspace(0, total_frames - 1, target_frames, dtype=int)
 
@@ -158,7 +152,6 @@ def get_images_and_videos(
         videos.append(frames)
         fpss.append(fps)
   return (images, videos, fpss)
-
 
 
 def filter_image(item, image_key='image', id_key=None):

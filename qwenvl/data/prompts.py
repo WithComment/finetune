@@ -1,7 +1,7 @@
 SYS_PROMPTS = {
   'default': "You are a helpful assistant.",
   'medqa_mc': "You are a medical expert answering a multiple choice question about medical knowledge. ",
-  
+
   'surgeryvid': """To accurately address the following question, adopt the perspective of a surgical analyst. Your primary focus must be on the dynamic interplay within the surgical field.
 
 Spatially: Concentrate on the critical zone of interaction. Isolate the region where the active tip of the surgical instrument meets the target anatomical structure. Details outside this zone are likely secondary.
@@ -23,7 +23,8 @@ Apply this focused analysis of space and time to the video to find the precise e
     "Base your answer directly on the visual information in the image. Use only what is visibly present to support your response.",
     "Carefully examine all the visual details in the image before answering. Identify the key objects and their attributes relevant to the question.",
   ],
-
+  'spatial': "Focus your attention on the primary subject and any objects it directly interacts with. Isolate key visual details.",
+  'temporal': "Focus your attention on the sequence of frames showing significant change. Prioritize the frames capturing the action's beginning, peak, and conclusion.",
 }
 
 USR_PROMPTS = {
@@ -133,7 +134,7 @@ Do not be a simple pattern-matcher. Do not learn that "this fuzzy shadow *correl
 
 By focusing on **Differentiation**, **Attribution**, and **Signal Amplification**, you will build a more robust, generalizable, and genuinely intelligent model of clinical vision. Your training is not about memorizing answers; it is about forging a genuine clinical intellect.
 """
-  ],
+               ],
   'openbiomedvid_qa': [
     "Your objective is to understand the practical application of the surgical procedure shown. Analyze the video and the provided QA pairs to see how the questions and answers illuminate the real-world purpose and effect of each surgical action. Use the QA pairs as a guide to connect theory to practice.",
     "View the surgical video and examine the accompanying QA pairs. Use each question and its corresponding answer as a starting point for an in-depth exploration of the specific moments, techniques, and anatomical structures referenced in the video. Your goal is to build a detailed and comprehensive understanding based on these inquiries.",

@@ -2,6 +2,7 @@
 #SBATCH --job-name=cft_vlm_infer
 #SBATCH -A aip-rahulgk
 #SBATCH -N 1
+#SBATCH --exclude=kn003,kn153,kn146
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=64
 #SBATCH --gres=gpu:l40s:4
@@ -11,10 +12,8 @@
 #SBATCH --error=logs/infer/%j/%N.err
 #SBATCH --open-mode=append
 
+date;hostname;pwd
 
-module load cuda
-source ~/venv/finetune/bin/activate
-cd ~/finetune
 setup_environment() {
 
     module load cuda
@@ -38,11 +37,13 @@ setup_environment() {
     export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True 
 }
 
+setup_environment
+
 # Default values
 dataset_use=""
 sys_prompt="default"
 requeue="false"
-model_name_or_path="Qwen/Qwen2.5-VL-3B-Instruct"
+model_name_or_path="Qwen2.5-VL-3B-Instruct"
 split="test"
 portion="1.0"
 use_chat_template="True"

@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=cft_vlm
+#SBATCH --job-name=cft_vlm_train
 #SBATCH -A aip-rahulgk
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=64
 #SBATCH --gres=gpu:l40s:4
-#SBATCH --mem=128G
+#SBATCH --mem=0
 #SBATCH --time=1-00:00:00
 #SBATCH --output=logs/train/%j/%N.log
 #SBATCH --error=logs/train/%j/%N.err
@@ -101,7 +101,7 @@ get_base_train_args() {
     --save_strategy steps \
     --save_steps 0.5 \
     --gradient_checkpointing True \
-    --dataloader_num_workers 4 \
+    --dataloader_num_workers 8 \
     --run_name ${run_name} \
     --report_to wandb"
 }

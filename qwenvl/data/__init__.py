@@ -62,6 +62,12 @@ avail_datasets = {
     "ds_key": "withcomment/surgeryvid",
     "cm": VQACM,
   },
+  "surgeryvid_small": {
+    "ds_dir": f"{DATA_ROOT}/surgeryvid_small/data/dataset",
+    "media_dir": f"{DATA_ROOT}/surgeryvid/data/vid_processed",
+    "ds_key": "withcomment/surgeryvid_small",
+    "cm": VQACM,
+  },
   "chexpert": {
     "ds_dir": f"{DATA_ROOT}/chexpert/data/dataset",
     "media_dir": None,

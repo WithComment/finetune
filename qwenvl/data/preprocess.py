@@ -12,6 +12,7 @@ from qwenvl.data.input_processor import InputProcessor
 from qwenvl.data.packing import fast_best_fit_decreasing
 from qwenvl.data.utils import get_image, get_video_frames, smart_resize
 from qwenvl.utils import get_logger
+import tempfile
 
 logger = get_logger(__name__)
 
@@ -176,11 +177,42 @@ class FilterStrategy(PreprocessStrategy):
     return ds
 
 
+class AddIdStrategy(PreprocessStrategy):
+
+  drop_existing: bool
+  col_name: str
+
+  def __init__(self, drop_existing=False, col_name='id', **kwargs):
+    super().__init__(**kwargs)
+    self.drop_existing = drop_existing
+    self.col_name = col_name
+
+  def _add_id(self, ds: datasets.Dataset) -> datasets.Dataset:
+    if self.drop_existing and self.col_name in ds.features:
+      ds = ds.remove_columns(self.col_name)
+
+    if 'id' not in ds.features:
+      logger.info(f"Adding {self.col_name} column to the dataset.")
+      ds = ds.add_column(name=self.col_name, column=list(range(len(ds))))
+    else:
+      logger.info(f"{self.col_name} column already exists in the dataset.")
+
+    return ds
+
+  def __call__(self, ds: datasets.Dataset | datasets.DatasetDict) -> datasets.Dataset | datasets.DatasetDict:
+    if isinstance(ds, datasets.DatasetDict):
+      for split, dataset in ds.items():
+        ds[split] = self._add_id(dataset)
+    else:
+      ds = self._add_id(ds)
+    return ds
+
+
 class SaveStrategy(PreprocessStrategy):
   def __init__(self, save_path: str | Path, exists_ok: bool = True, **kwargs):
     super().__init__(**kwargs)
     self.save_path = Path(save_path)
-    self.temp_path = self.save_path.with_name(f"{self.save_path.name}_tmp")
+
     self.exists_ok = exists_ok
 
   def __call__(self, ds: datasets.Dataset):
@@ -188,15 +220,18 @@ class SaveStrategy(PreprocessStrategy):
     if not self.save_path.exists():
       ds.save_to_disk(self.save_path)
     else:
-      ds.save_to_disk(self.temp_path)
-      logger.info(f"Temporary dataset saved to {self.temp_path}.")
+      with tempfile.TemporaryDirectory() as tmpdirname:
+        temp_path = Path(tmpdirname) / f"{self.save_path.name}_tmp"
+        ds.save_to_disk(temp_path)
+        logger.info(f"Temporary dataset saved to {temp_path}.")
 
-      def onerror(func, path, exc_info):
-        logger.error(f"Error removing {path}: {exc_info}")
+        def onerror(func, path, exc_info):
+          logger.error(f"Error removing {path}: {exc_info}")
 
-      shutil.rmtree(self.save_path, onerror=onerror)
-      logger.info(f"Removed existing dataset at {self.save_path}.")
-      shutil.move(self.temp_path, self.save_path)
+        shutil.rmtree(self.save_path, onerror=onerror)
+        logger.info(f"Removed existing dataset at {self.save_path}.")
+        shutil.move(temp_path, self.save_path)
+
     logger.info(f"Dataset saved to {self.save_path}.")
     return ds
 

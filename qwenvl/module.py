@@ -6,7 +6,7 @@ from transformers import AutoProcessor
 from qwenvl.argument import DataArguments, ProcessingArguments
 from qwenvl.data.conversation import AllPromptAdder, ConversationMaker, ConversationProcessor, FirstPromptAdder, RolePromptAdder, VQACM
 from qwenvl.data.input_processor import IMAGE_PAD, InputProcessor
-from qwenvl.data.preprocess import FilterStrategy, GetNumMediaTokensStrategy, GetNumTokensStrategy, PreprocessStrategy, SaveStrategy, VerifyMediaStrategy, pack_dataset
+from qwenvl.data.preprocess import AddIdStrategy, FilterStrategy, GetNumMediaTokensStrategy, GetNumTokensStrategy, PreprocessStrategy, SaveStrategy, VerifyMediaStrategy, pack_dataset
 from qwenvl.data.prompts import CFT_PROMPTS, USR_PROMPTS, SYS_PROMPTS
 from qwenvl.data import avail_datasets
 from qwenvl.utils import get_logger
@@ -146,6 +146,7 @@ def create_strategies(
 
   preprocess_strategies = []
   if rank == 0:
+    preprocess_strategies.append(AddIdStrategy())
     if 'mnist' not in data_args.dataset_use:
       preprocess_strategies.append(VerifyMediaStrategy(
           get_content_fn=cp.get_content,
@@ -159,10 +160,5 @@ def create_strategies(
         preprocess_strategies.append(GetNumTokensStrategy(cm=cp, processor=ip))
         preprocess_strategies.append(FilterStrategy(
           lambda x: x['num_tokens'] <= data_args.model_max_length))
-      else:
-        preprocess_strategies.append(FilterStrategy(
-          lambda x: x['num_media_tokens'] <= data_args.model_max_length))
-
-    preprocess_strategies.append(SaveStrategy(ds_config['ds_dir'], True))
 
   return preprocess_strategies, cp, ip

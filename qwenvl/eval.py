@@ -12,11 +12,13 @@ def yes_no_filter(answer: list[str]) -> bool:
   yes_no_answers = ['yes', 'no', 'y', 'n']
   return any(c in yes_no_answers for c in answer)
 
+
 def chexpert_filter(answer: list[str]) -> bool:
   chexpert_answers = [
     'present', 'absent', 'ap', 'pa', 'lateral', 'frontal',
   ]
   return any(c in chexpert_answers for c in answer)
+
 
 def mc_filter(answer: list[str]) -> bool:
   return any(c in ['a', 'b', 'c', 'd'] for c in answer)
@@ -30,7 +32,7 @@ def comp_answer_basic(answer: str, model_answer: str) -> bool:
   return answer[0] in model_answer
 
 
-def evaluate(
+def manual_eval(
     output_file: Path,
     parse_answer: Callable = parse_answer_basic,
     comp_answer: Callable = comp_answer_basic,
@@ -39,12 +41,12 @@ def evaluate(
   items = list()
   with open(output_file, 'r') as f:
     items = [json.loads(l) for l in f]
-    
+
   total = 0
   correct = 0
   incorrect = 0
   invalid = 0
-  
+
   for item in items:
     if 'mnist' in str(output_file):
       answer = parse_answer(str(item['label']))
@@ -65,7 +67,8 @@ def evaluate(
   acc_wo_invalid = correct / (total - invalid) if (total - invalid) > 0 else 0
   if total == 0:
     raise ValueError("No items (of the right type) found in the output file.")
-  logger.info(f"Total: {total}, Correct: {correct}, Incorrect: {incorrect}, Invalid: {invalid}")
+  logger.info(
+    f"Total: {total}, Correct: {correct}, Incorrect: {incorrect}, Invalid: {invalid}")
   logger.info(f"Accuracy with invalid: {correct / (total):.2f}")
   logger.info(f"Accuracy without invalid: {acc_wo_invalid:.2f}")
   return {
@@ -80,14 +83,18 @@ def evaluate(
 
 if __name__ == "__main__":
   import argparse
-  
+
   parser = argparse.ArgumentParser(description="Evaluate model output.")
-  parser.add_argument('output_file', type=Path, help="Path to the output file.")
-  parser.add_argument('--parse_answer', type=str, default="parse_answer_basic", help="Answer parsing function name.")
-  parser.add_argument('--comp_answer', type=str, default="comp_answer_basic", help="Comparison function name.")
-  parser.add_argument('--filter', type=str, default="yes_no_filter", help="Filter function name (optional).")
+  parser.add_argument('output_file', type=Path,
+                      help="Path to the output file.")
+  parser.add_argument('--parse_answer', type=str,
+                      default="parse_answer_basic", help="Answer parsing function name.")
+  parser.add_argument('--comp_answer', type=str,
+                      default="comp_answer_basic", help="Comparison function name.")
+  parser.add_argument('--filter', type=str, default="yes_no_filter",
+                      help="Filter function name (optional).")
   args = parser.parse_args()
-  
+
   parse_answer = globals().get(args.parse_answer)
   comp_answer = globals().get(args.comp_answer)
   filter_func = globals().get(args.filter)
@@ -96,9 +103,11 @@ if __name__ == "__main__":
   if comp_answer is None:
     raise ValueError(f"Comparison function '{args.comp_answer}' not found.")
   if filter_func is None:
-    logger.warning(f"Filter function '{args.filter}' not found, using no filter.")
-  
-  summary = evaluate(args.output_file, parse_answer, comp_answer, filter_func)
+    logger.warning(
+      f"Filter function '{args.filter}' not found, using no filter.")
+
+  summary = manual_eval(args.output_file, parse_answer,
+                        comp_answer, filter_func)
   output_dir = Path(args.output_file).parent
   with open(output_dir / 'summary.json', 'w') as f:
     json.dump(summary, f, indent=2)

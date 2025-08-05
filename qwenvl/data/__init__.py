@@ -7,17 +7,29 @@ DATA_ROOT = "/scratch/xiaowenz/datasets"
 
 
 avail_datasets = {
-  "merged_fashion": {
-    "ds_dir": f"{DATA_ROOT}/merged_fashion/data/dataset",
-    "media_dir": None,
-    "ds_key": "withcomment/merged_fashion",
-    "cm": VQACM,
-  },
-  "fashion_mnist": {
-    "ds_dir": f"{DATA_ROOT}/fasion_mnist/data/dataset",
-    "media_dir": None,
-    "ds_key": "zalando-datasets/fashion_mnist",
+  "fashion_spatial": {
+    "ds_dir": f"{DATA_ROOT}/fashion_spatial/data/dataset",
+    "media_dir": f"{DATA_ROOT}/fashion_spatial/data/images",
+    "ds_key": "withcomment/fashion_spatial",
     "cm": MNISTCM,
+    "spatial": True,
+    "temporal": False,
+  },
+  "fashion_temporal": {
+    "ds_dir": f"{DATA_ROOT}/fashion_temporal/data/dataset",
+    "media_dir": f"{DATA_ROOT}/fashion_temporal/data/videos",
+    "ds_key": "withcomment/fashion_temporal",
+    "cm": MNISTCM,
+    "spatial": False,
+    "temporal": True,
+  },
+  "fashion_final": {
+    "ds_dir": f"{DATA_ROOT}/fashion_final/data/dataset",
+    "media_dir": f"{DATA_ROOT}/fashion_final/data/videos",
+    "ds_key": "withcomment/fashion_final",
+    "cm": MNISTCM,
+    "spatial": True,
+    "temporal": True,
   },
   "path_vqa": {
     "ds_dir": f"{DATA_ROOT}/path_vqa/data/dataset",

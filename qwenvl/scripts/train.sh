@@ -56,7 +56,7 @@ get_data_args() {
     --dataset_use ${dataset_use} \
     --packing ${packing} \
     --split train \
-    --model_max_length 8000 \
+    --model_max_length 4096 \
     --portion 1.0"
 }
 
@@ -98,7 +98,7 @@ get_base_train_args() {
     --warmup_ratio 0 \
     --max_grad_norm 1 \
     --logging_steps 1 \
-    --save_strategy steps \
+    --save_strategy no \
     --save_steps 0.5 \
     --gradient_checkpointing True \
     --dataloader_num_workers 8 \

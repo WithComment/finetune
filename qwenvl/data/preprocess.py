@@ -44,6 +44,7 @@ class VerifyMediaStrategy(PreprocessStrategy):
       for vid in videos:
         get_video_frames(vid, vid_proc_args=self.config, is_checking=True)
     except Exception as e:
+      raise e
       logger.error(e)
       return False
     return True

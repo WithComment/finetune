@@ -1,6 +1,5 @@
 from datetime import timedelta
 from pathlib import Path
-import os
 import json
 from typing import Callable
 from tqdm import tqdm
@@ -11,7 +10,7 @@ import torch
 import torch.distributed as dist
 import transformers
 
-from qwenvl.eval import chexpert_filter, comp_answer_basic, evaluate, mc_filter, yes_no_filter
+from qwenvl import gpt_eval
 
 from .argument import DataArguments, ModelArguments, ProcessingArguments
 from .train import rank0_print, set_processor, create_datamodule
@@ -40,11 +39,15 @@ def log_header(
 def _load_model_and_processor(
     model_path: str,
     device: str,
+    no_generate: bool,
 ) -> tuple[AutoModel, AutoProcessor]:
   """Load the Qwen model and processor."""
   if not isinstance(model_path, str):
     model_path = str(model_path)
   logger.info(f"Loading model from {model_path} on device {device}")
+  if no_generate:
+    return None, None
+
   if 'Qwen2-VL' in model_path:
     model = Qwen2VLForConditionalGeneration.from_pretrained(
         model_path,
@@ -56,28 +59,32 @@ def _load_model_and_processor(
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         model_path,
         device_map={"": device},
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16,
         attn_implementation="flash_attention_2"
     )
   processor = AutoProcessor.from_pretrained(model_path)
   return model, processor
 
 
-def load_pretrained_qwen(model_path, device):
+def load_pretrained_qwen(model_path, device, no_generate) -> tuple[AutoModel, AutoProcessor, Path]:
   """Load the Qwen model and processor."""
   checkpoint_dir = Path("/scratch/xiaowenz/checkpoints/")
   if (checkpoint_dir / model_path).exists():
     model_path = checkpoint_dir / model_path
+  if (Path("/") / model_path).exists():
+    model_path = Path("/") / model_path
 
   try:
-    model, processor = _load_model_and_processor(model_path, device)
+    model, processor = _load_model_and_processor(
+      model_path, device, no_generate)
   except OSError as e:
     logger.warning(
         f"Model not found at {model_path}. Attempting to load checkpoint.")
     model_path = get_last_checkpoint(model_path)
     if model_path is None:
       raise RuntimeError(f"No checkpoint found in {model_path}.") from e
-    model, processor = _load_model_and_processor(model_path, device)
+    model, processor = _load_model_and_processor(
+      model_path, device, no_generate)
 
   return model, processor, Path(model_path)
 
@@ -127,11 +134,16 @@ def _infer(
     outputs = processor.tokenizer.batch_decode(
       output_ids, skip_special_tokens=True)
     for item, output in zip(batch, outputs):
+
       output = output.split("assistant")[-1].strip().strip("\n")
       # Unpack item.
       item = item[0]
-      item['model_answer'] = output
-      result.append(drop_non_json_fields(item))
+      result.append({
+        'id': item['id'],
+        'question': item['question'],
+        'answer': item['answer'],
+        'model_answer': output,
+      })
   return result
 
 
@@ -156,9 +168,14 @@ def gather_result(
       rank_result = [json.loads(line) for line in f]
       all_result.extend(rank_result)
 
+  all_result.sort(key=lambda x: x['id'])
+
+  with open(output_dir / 'results.json', 'w') as f:
+    json.dump(all_result, f, indent=2)
+
   with open(output_dir / 'results.jsonl', 'w') as f:
     for item in all_result:
-      f.write(json.dumps(item) + '\n')
+      f.write(json.dumps(drop_non_json_fields(item)) + '\n')
 
   # Clean up temporary files
   for rank in range(world_size):
@@ -209,15 +226,22 @@ def predict(
     model_path: str,
     data_args: DataArguments,
     proc_args: ProcessingArguments,
+    no_generate: bool = False,
 ):
   """Run inference on the benchmark using Qwen2-VL."""
+  device = 'cpu'
+  world_size = 1
+  local_rank = 0
 
-  dist.init_process_group(backend="nccl", timeout=timedelta(hours=1))
+  if not no_generate:
+    dist.init_process_group(backend="nccl", timeout=timedelta(hours=1))
 
-  world_size = dist.get_world_size()
-  local_rank = dist.get_rank()
-  device = f"cuda:{local_rank}"
-  model, processor, model_path = load_pretrained_qwen(model_path, device)
+    world_size = dist.get_world_size()
+    local_rank = dist.get_rank()
+    device = f"cuda:{local_rank}"
+
+  model, processor, model_path = load_pretrained_qwen(
+    model_path, device, no_generate)
 
   ds_dir = Path(avail_datasets[data_args.dataset_use]['ds_dir'])
   if model_path.name.startswith('checkpoint-'):
@@ -244,6 +268,9 @@ def predict(
   if local_rank == 0:
     log_header(model_path, data_args, output_dir, world_size, logger)
 
+  if no_generate:
+    return output_dir
+
   proc_args.padding_side = 'left'
   processor = set_processor(processor, proc_args, data_args)
   ds, collate_fn = create_datamodule(
@@ -269,6 +296,7 @@ def predict(
       },
       portion=data_args.portion,
   )
+
   return output_dir
 
 
@@ -284,24 +312,34 @@ if __name__ == "__main__":
       model_args.model_name_or_path,
       data_args,
       proc_args,
+      no_generate=True,
   )
+  if not dist.is_initialized() or dist.get_rank() == 0:
+    eval_model = 'gemini-2.5-pro'
+    gpt_result_path = gpt_eval.gpt_eval(
+      output_dir / 'results.json', model=eval_model)
+    summary_path = output_dir / f'{eval_model.replace("-", "_")}_summary.json'
+    isvalid = gpt_eval.assert_validity(
+      output_dir / 'results.json', gpt_result_path)
+    gpt_eval.get_summary(gpt_result_path, summary_path, isvalid)
 
-  if 'chexpert' in data_args.dataset_use:
-    filter = chexpert_filter
-  elif 'mc' in data_args.dataset_use:
-    filter = mc_filter
-  else:
-    filter = yes_no_filter
+  if dist.is_initialized():
+    dist.barrier(device_ids=[dist.get_rank()])
+    dist.destroy_process_group()
+  # if 'chexpert' in data_args.dataset_use:
+  #   filter = chexpert_filter
+  # elif 'mc' in data_args.dataset_use:
+  #   filter = mc_filter
+  # else:
+  #   filter = yes_no_filter
 
-  if dist.get_rank() == 0:
-    summary = evaluate(
-        output_dir / 'results.jsonl',
-        comp_answer=comp_answer_basic,
-        filter=filter,
-    )
-    with open(output_dir / 'summary.json', 'w') as f:
-      json.dump(summary, f, indent=2)
-    logger.info(f"Evaluation summary saved to {output_dir / 'summary.json'}")
-    logger.info(summary)
-  dist.barrier(device_ids=[dist.get_rank()])
-  dist.destroy_process_group()
+  # if dist.get_rank() == 0:
+  #   summary = manual_eval(
+  #       output_dir / 'results.jsonl',
+  #       comp_answer=comp_answer_basic,
+  #       filter=filter,
+  #   )
+  #   with open(output_dir / 'summary.json', 'w') as f:
+  #     json.dump(summary, f, indent=2)
+  #   logger.info(f"Evaluation summary saved to {output_dir / 'summary.json'}")
+  #   logger.info(summary)

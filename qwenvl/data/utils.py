@@ -20,6 +20,26 @@ PLACEHOLDER_IDS = {151654, 151655, 151656}
 torch.set_num_threads(1)
 
 
+def ordinal(num: int) -> str:
+  """Converts a number into an ordinal string"""
+  if num < 0:
+    raise ValueError('Cannot convert negative numbers to ordinals')
+
+  # special cases
+  if num % 100 in (11, 12, 13):
+    return f'{num}th'
+
+  last_digit = num % 10
+  if last_digit == 1:
+    return f'{num}st'
+  if last_digit == 2:
+    return f'{num}nd'
+  if last_digit == 3:
+    return f'{num}rd'
+
+  return f'{num}th'
+
+
 def make_cot(subtitle_file: Path):
   if not subtitle_file.exists():
     return ''
@@ -43,7 +63,7 @@ def get_vid_frames_opencv(
     all_frames: bool,
     is_checking: bool,
     is_counting: bool,
-) -> tuple[np.ndarray, float]:
+) -> tuple[torch.Tensor, float]:
   """
   Processes video using OpenCV. Raises an exception on failure.
   """

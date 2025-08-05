@@ -1,3 +1,4 @@
+import datetime
 import json
 from pathlib import Path
 import time
@@ -37,14 +38,16 @@ Your job is to determine if the `model_answer` is **semantically** correct, even
 **DO NOT MODIFY EXISTING FIELDS**.
 Add a 5th field, `is_correct` to the new JOSN objects with the value true if the model's answer is correct, and false if it is not.
 Make sure that the value of the is_correct field of each object is based solely on data in the object, and not on any other objects in the file.
+Make sure that all input objects are present in the output, by ensuring all input ids are present in the output.
 
+Here is the content of the file:
 {file_content}
 """
   prompt = prompt.format(file_content=result_path.read_text())
   client = genai.Client()
   logger.info(f"Evaluating results using model: {model}")
 
-  start_time = time.time()
+  start_time = datetime.datetime.now()
   logger.info(f"Starting evaluation at {start_time}")
   response = client.models.generate_content(
       model=model,
@@ -55,9 +58,11 @@ Make sure that the value of the is_correct field of each object is based solely 
           temperature=0,
       )
   )
-  end_time = time.time()
+  end_time = datetime.datetime.now()
 
-  logger.info(f"Evaluation completed in {end_time - start_time:.2f} seconds")
+  logger.info(
+    f"Evaluation completed in {end_time.timestamp() - start_time.timestamp():.2f} seconds")
+  logger.info(response.text[:100])
   eval_result_path = result_path.with_name(
       f"{model.replace('-', '_')}_results.json")
   with open(eval_result_path, "w") as f:

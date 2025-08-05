@@ -97,15 +97,23 @@ def create_strategies(
     data_args: DataArguments,
     proc_args: ProcessingArguments,
     rank: int,
+    additional_kwargs: dict[str, Any] = {}
 ) -> tuple[list[PreprocessStrategy], ConversationMaker, InputProcessor]:
   """
   Create preprocess strategies and conversation maker.
   """
+  assert (
+    (data_args.split == 'train' and not proc_args.add_generation_prompt)
+    or
+    (data_args.split != 'train' and proc_args.add_generation_prompt)
+  )
+
   ds_config = avail_datasets[data_args.dataset_use]
 
   base_cm = ds_config['cm'](
     for_training=data_args.split == 'train',
-    **ds_config
+    **ds_config,
+    **additional_kwargs
   )
   modifiers = []
 
@@ -127,7 +135,7 @@ def create_strategies(
   for sys_prompt_name in proc_args.sys_prompt.split(",")[::-1]:
     if sys_prompt_name in SYS_PROMPTS:
       sys_prompt = SYS_PROMPTS[sys_prompt_name]
-      modifiers.append(FirstPromptAdder(sys_prompt))
+      modifiers.append(AllPromptAdder(sys_prompt))
       logger.info(f"Using system prompt {sys_prompt_name}")
     else:
       logger.warning(
@@ -160,5 +168,6 @@ def create_strategies(
         preprocess_strategies.append(GetNumTokensStrategy(cm=cp, processor=ip))
         preprocess_strategies.append(FilterStrategy(
           lambda x: x['num_tokens'] <= data_args.model_max_length))
+    preprocess_strategies.append(SaveStrategy(save_path=ds_config['ds_dir']))
 
   return preprocess_strategies, cp, ip

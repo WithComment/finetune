@@ -12,7 +12,7 @@ class ModelArguments:
       default="Qwen/Qwen2.5-VL-3B-Instruct")
   tune_mm_llm: bool = field(default=True)
   tune_mm_mlp: bool = field(default=True)
-  tune_mm_vision: bool = field(default=False) 
+  tune_mm_vision: bool = field(default=False)
 
 
 @dataclass
@@ -22,7 +22,8 @@ class DataArguments:
   split: str = field(default="train")
   model_max_length: int = field(default=16384)
   portion: float = field(default=1.0)
-  eval_batch_size: int = field(default=1, metadata={"help": "Batch size for evaluation."})
+  eval_batch_size: int = field(
+    default=1, metadata={"help": "Batch size for evaluation."})
 
 
 @dataclass
@@ -31,7 +32,8 @@ class TrainingArguments(transformers.TrainingArguments):
   optim: str = field(default="adamw_bnb_8bit")
   mm_projector_lr: Optional[float] = None
   vision_tower_lr: Optional[float] = None
-  min_lr_ratio: Optional[float] = field(default=0.1, metadata={"help": "Minimum learning rate ratio for cosine_with_min_lr scheduler"})
+  min_lr_ratio: Optional[float] = field(default=0.1, metadata={
+                                        "help": "Minimum learning rate ratio for cosine_with_min_lr scheduler"})
 
 
 @dataclass
@@ -49,18 +51,25 @@ class ProcessingArguments:
   video_max_frames: int = field(default=420)
   video_min_frames: int = field(default=4)
   base_interval: int = field(default=1)
-  temporal_patch_size: int = field(default=2, metadata={"help": "Temporal patch size for video processing"})
-  
+  temporal_patch_size: int = field(
+    default=2, metadata={"help": "Temporal patch size for video processing"})
+
   sys_prompt: str = field(default='')
   cft_prompt: str = field(default='')
   usr_prompt: str = field(default='')
-  use_chat_template: bool = field(default=False, metadata={"help": "Use chat template for text input"})
-  add_generation_prompt: bool = field(default=False, metadata={"help": "Add generation prompt to text input"})
-  add_vision_id: bool = field(default=False, metadata={"help": "Add vision id to text input"})
-  ignore_idx: int = field(default=-100, metadata={"help": "Index to ignore in loss calculation"})
-  padding_side: str = field(default="right", metadata={"help": "Padding side for text input, right pad when training, left pad when inference"})
-  use_bf16: bool = field(default=False, metadata={"help": "Use bfloat16 for training"})
-  
+  use_chat_template: bool = field(
+    default=False, metadata={"help": "Use chat template for text input"})
+  add_generation_prompt: bool = field(
+    default=False, metadata={"help": "Add generation prompt to text input"})
+  add_vision_id: bool = field(default=False, metadata={
+                              "help": "Add vision id to text input"})
+  ignore_idx: int = field(
+    default=-100, metadata={"help": "Index to ignore in loss calculation"})
+  padding_side: str = field(default="right", metadata={
+                            "help": "Padding side for text input, right pad when training, left pad when inference"})
+  use_bf16: bool = field(default=False, metadata={
+                         "help": "Use bfloat16 for training"})
+
   @property
   def media_params(self):
     return {
@@ -74,4 +83,3 @@ class ProcessingArguments:
         "base_interval": self.base_interval,
         "temporal_patch_size": self.temporal_patch_size,
     }
-  

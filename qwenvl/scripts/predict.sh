@@ -168,7 +168,8 @@ args="
 # ...existing code...
 
 echo "Starting evaluation process in the background..."
-torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.predict ${args}
+# torchrun --nnodes=1 --nproc_per_node=4 -m qwenvl.predict ${args}
+python -m qwenvl.predict ${args}
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -ne 0 ]; then

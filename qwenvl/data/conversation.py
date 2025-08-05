@@ -1,9 +1,16 @@
+'''
+This module defines various classes for creating a conversation from
+an item in a dataset in the format required for training.
+'''
+
 from abc import ABC, abstractmethod
 import itertools
 import random
-from typing import Any
+from typing import Any, Callable
 
 from anyio import Path
+
+from .utils import ordinal
 
 
 class ConversationMaker(ABC):
@@ -108,21 +115,61 @@ class VQACM(ConversationMaker):
 
 
 class MNISTCM(ConversationMaker):
+  quadrants = [
+    ['top-left', 'top-right'],
+    ['bottom-left', 'bottom-right']
+  ]
+  CHOICES = (
+    'T-shirt/top', 'Trouser', 'Pullover', 'Dress',
+    'Coat', 'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot'
+  )
+  spatial: bool
+  temporal: bool
+  int2str: Callable[[int], str]
+  random: int
+  choices: list[str]
+
+  def __init__(self, spatial: bool, temporal: bool, shuffle: int = 1, **kwargs):
+    super().__init__(**kwargs)
+    self.spatial = spatial
+    self.temporal = temporal
+    self.random = shuffle
+    self.choices = list(self.CHOICES)
+    if self.random > 0:
+      random.shuffle(self.choices)
+
   def __call__(self, item: dict[str, Any]) -> list[dict[str, Any]]:
-    '''Create a MNIST conversation from an item in a dataset.
+    if self.temporal:
+      _type = 'video'
+    else:
+      _type = 'image'
 
-    Args:
-      item: A dictionary representing an item in the dataset.
+    media = {_type: self.add_media_dir(item[_type])}
 
-    Returns:
-      A dictionary containing the conversation.
-    '''
+    # loc is (x, y) or (t, x, y).
+    loc = item['loc']
+    assert (len(loc) == 3 and self.temporal) or (
+      len(loc) == 2 and not self.temporal)
+
+    if self.spatial:
+      _loc = f'the {self.quadrants[loc[-1]][loc[-2]]} corner '
+    else:
+      _loc = ''
+
+    if self.temporal:
+      _loc += f'during the {ordinal(loc[0] + 1)} second '
+
+    if self.random > 1:
+      random.shuffle(self.choices)
+    prompt = f"What type of clothing is in {_loc}of this {_type}? Choose exactly one from the following options: "
+    prompt += ', '.join(self.choices) + '.\n'
     conv = [{'role': 'user', 'content': [
-      {'image': item['image']},
-      {'text': 'What type of clothing is in this image?'}
+      media,
+      {'text': prompt}
     ]}]
     if self.for_training:
-      conv.append({'role': 'assistant', 'content': str(item['label'])})
+      conv.append(
+        {'role': 'assistant', 'content': self.CHOICES[item['label']]})
     return conv
 
 

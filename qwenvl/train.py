@@ -83,6 +83,8 @@ def set_processor(processor, proc_args: ProcessingArguments, data_args: DataArgu
   img_processor.min_pixels = proc_args.image_min_pixels
   vid_processor.min_pixels = proc_args.video_min_pixels
   img_processor.do_resize = True
+  vid_processor.do_resize = True
+  vid_processor.temporal_patch_size = proc_args.temporal_patch_size
 
   return processor
 

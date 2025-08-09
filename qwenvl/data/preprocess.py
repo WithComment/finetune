@@ -44,7 +44,6 @@ class VerifyMediaStrategy(PreprocessStrategy):
       for vid in videos:
         get_video_frames(vid, vid_proc_args=self.config, is_checking=True)
     except Exception as e:
-      raise e
       logger.error(e)
       return False
     return True
@@ -135,7 +134,7 @@ class GetNumTokensStrategy(PreprocessStrategy):
     self.processor = processor
 
   def get_num_tokens(self, item):
-    num_text_tokens = self.processor.get_num_text_tokens(self.cm([item]))
+    num_text_tokens = self.processor.get_num_text_tokens(self.cm(item))
     num_media = item['num_media']
     item['num_tokens'] = num_text_tokens - num_media + item['num_media_tokens']
     return item

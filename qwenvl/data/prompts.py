@@ -2,14 +2,6 @@ SYS_PROMPTS = {
   'default': "You are a helpful assistant.",
   'medqa_mc': "You are a medical expert answering a multiple choice question about medical knowledge. ",
 
-  'surgeryvid': """To accurately address the following question, adopt the perspective of a surgical analyst. Your primary focus must be on the dynamic interplay within the surgical field.
-
-Spatially: Concentrate on the critical zone of interaction. Isolate the region where the active tip of the surgical instrument meets the target anatomical structure. Details outside this zone are likely secondary.
-
-Temporally: Pinpoint the moments of procedural state change. The decisive evidence is rarely in a static frame, but in the short sequence showing the 'before, during, and after' of a key action—such as an incision, a suture being tied, or tissue being retracted.
-
-Apply this focused analysis of space and time to the video to find the precise evidence required to answer the question.
-""",
   'just_focus': "Focus on the image. Base your answer strictly on the visual evidence presented in the image.",
   'path_vqa': [
     "Examine the key features in this medical image, such as anatomical structures, abnormal shapes, and variations in density. Based your answer strictly on what you see.",
@@ -23,6 +15,15 @@ Apply this focused analysis of space and time to the video to find the precise e
     "Base your answer directly on the visual information in the image. Use only what is visibly present to support your response.",
     "Carefully examine all the visual details in the image before answering. Identify the key objects and their attributes relevant to the question.",
   ],
+
+  'surgeryvid': """To accurately address the following question, adopt the perspective of a surgical analyst. Your primary focus must be on the dynamic interplay within the surgical field.
+
+Spatially: Concentrate on the critical zone of interaction. Isolate the region where the active tip of the surgical instrument meets the target anatomical structure. Details outside this zone are likely secondary.
+
+Temporally: Pinpoint the moments of procedural state change. The decisive evidence is rarely in a static frame, but in the short sequence showing the 'before, during, and after' of a key action—such as an incision, a suture being tied, or tissue being retracted.
+
+Apply this focused analysis of space and time to the video to find the precise evidence required to answer the question.
+""",
   'spatial': "Focus your attention on the primary subject and any objects it directly interacts with. Isolate key visual details.",
   'temporal': "Focus your attention on the sequence of frames showing significant change. Prioritize the frames capturing the action's beginning, peak, and conclusion.",
   'video': "Focus attention on the primary subject's main action. Prioritize the temporal sequence from the action's start to its conclusion, emphasizing the peak. Within this sequence, isolate the key visual details of the subject and its direct interactions."
@@ -149,3 +150,14 @@ By focusing on **Differentiation**, **Attribution**, and **Signal Amplification*
     "Engage in comparative learning. Analyze the surgical video and the detailed answers in the QA pairs. Compare the specific techniques, instrument choices, and procedural logic with other surgical methods in your knowledge base. Use the QA list to identify the unique features and differentiating factors of this particular procedure."
   ]
 }
+
+
+def export_selected_sys_prompts():
+  import os
+  base_dir = "/home/xiaowenz/finetune"
+  keys = ['surgeryvid', 'spatial', 'temporal', 'video']
+  default_prompt = SYS_PROMPTS['default']
+  for key in keys:
+    filename = os.path.join(base_dir, f"{key}.txt")
+    with open(filename, "w") as f:
+      f.write(default_prompt + "\n" + SYS_PROMPTS[key])

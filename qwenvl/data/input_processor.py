@@ -118,10 +118,10 @@ class InputProcessor(ProcessorMixin):
 
     return BatchFeature(data={**image_inputs, **videos_inputs}, tensor_type=return_tensors)
 
-  def get_images_and_videos(self, messages, proc_args=None):
+  def get_images_and_videos(self, messages):
     return [
       val or None
-      for val in get_images_and_videos(messages, proc_args or self.proc_args)
+      for val in get_images_and_videos(messages, self.config)
     ]
 
   def _process_one(

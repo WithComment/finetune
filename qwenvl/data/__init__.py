@@ -58,8 +58,8 @@ avail_datasets = {
   "openbiomedvid_qa": {
     "ds_dir": f"{DATA_ROOT}/openbiomedvid_qa/data/dataset",
     "media_dir": f"{DATA_ROOT}/openbiomedvid/data/vid_processed",
-    "ds_key": "withcomment/openbiomedvid_qa",
-    "cm": OBVCM,
+    "ds_key": "connectthapa84/OpenBiomedVid",
+    "cm": VQACM,
     "qa_list_field": "qa_pairs",
   },
   "openbiomedvid_cap": {
@@ -71,13 +71,19 @@ avail_datasets = {
   "surgeryvid": {
     "ds_dir": f"{DATA_ROOT}/surgeryvid/data/dataset",
     "media_dir": f"{DATA_ROOT}/surgeryvid/data/vid_processed",
-    "ds_key": "withcomment/surgeryvid",
+    "ds_key": "connectthapa84/SurgeryVideoQA",
     "cm": VQACM,
   },
   "surgeryvid_small": {
     "ds_dir": f"{DATA_ROOT}/surgeryvid_small/data/dataset",
     "media_dir": f"{DATA_ROOT}/surgeryvid/data/vid_processed",
     "ds_key": "withcomment/surgeryvid_small",
+    "cm": VQACM,
+  },
+  "surgeryvid_tiny": {
+    "ds_dir": f"{DATA_ROOT}/surgeryvid_tiny/data/dataset",
+    "media_dir": f"{DATA_ROOT}/surgeryvid/data/vid_processed",
+    "ds_key": "withcomment/surgeryvid_tiny",
     "cm": VQACM,
   },
   "chexpert": {

@@ -277,6 +277,7 @@ def predict(
       processor=processor,
       data_args=data_args,
       proc_args=proc_args,
+      for_training=False
   )
 
   generate_output(
@@ -312,7 +313,7 @@ if __name__ == "__main__":
       model_args.model_name_or_path,
       data_args,
       proc_args,
-      no_generate=True,
+      no_generate=False,
   )
   if not dist.is_initialized() or dist.get_rank() == 0:
     eval_model = 'gemini-2.5-pro'

@@ -103,6 +103,7 @@ def create_datamodule(
     processor: transformers.AutoProcessor,
     data_args: DataArguments,
     proc_args: ProcessingArguments,
+    for_training: bool = True,
 ):
   rank = dist.get_rank() if dist.is_initialized() else 0
   preprocess_strategies, cp, ip = create_strategies(
@@ -111,7 +112,10 @@ def create_datamodule(
       proc_args=proc_args,
       rank=rank,
   )
-
+  
+  if not for_training:
+    ip = processor
+    
   ds, collate_fn = None, None
   if rank == 0:
     ds, collate_fn = create_module(

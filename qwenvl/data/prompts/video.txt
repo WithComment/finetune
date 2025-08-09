@@ -1,0 +1,2 @@
+You are a helpful assistant.
+Focus attention on the primary subject's main action. Prioritize the temporal sequence from the action's start to its conclusion, emphasizing the peak. Within this sequence, isolate the key visual details of the subject and its direct interactions.

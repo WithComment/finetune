@@ -114,9 +114,13 @@ class GetNumMediaTokensStrategy(PreprocessStrategy):
       desc="Counting media tokens",
       load_from_cache_file=self.load_from_cache_file,
     )
+    if isinstance(ds, datasets.DatasetDict):
+      splits = [split for split in ds.values()]
+    else:
+      splits = [ds]
     total_media_tokens = sum(
-      sum(split['num_media_tokens']) for split in ds.values())
-    total_len = sum(len(split) for split in ds.values())
+      sum(split['num_media_tokens']) for split in splits)
+    total_len = sum(len(split) for split in splits)
     logger.info(
       f"Average number of media tokens: {total_media_tokens / total_len:.2f}")
     return ds

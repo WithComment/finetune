@@ -94,6 +94,7 @@ class GetNumMediaTokensStrategy(PreprocessStrategy):
         )
         num_tokens += h_tokens * w_tokens * nframes // self.config.temporal_patch_size
     except Exception as e:
+      raise e
       logger.error(e)
       images, videos = [], []
       num_tokens = -1

@@ -50,7 +50,7 @@ class ProcessingArguments:
   video_max_pixels: int = field(default=PATCH_SIZE * 512)
   video_max_frames: int = field(default=420)
   video_min_frames: int = field(default=4)
-  base_interval: int = field(default=1)
+  base_interval: float = field(default=1.0)
   temporal_patch_size: int = field(
     default=2, metadata={"help": "Temporal patch size for video processing"})
 

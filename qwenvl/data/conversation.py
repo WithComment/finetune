@@ -78,10 +78,6 @@ class VQACM(ConversationMaker):
 
   def __init__(self, qa_list_field: str = None, **kwargs):
     super().__init__(**kwargs)
-    if not self.for_training and qa_list_field:
-      raise ValueError(
-        "For inference, ask questions one by one. That is, do not use qa_list_field.")
-
     self.qa_list_field = qa_list_field
 
   def __call__(self, item: dict[str, Any]) -> list[dict[str, Any]]:
@@ -105,7 +101,10 @@ class VQACM(ConversationMaker):
       qa_pairs = item[self.qa_list_field]
     else:
       qa_pairs = [{'question': item['question'], 'answer': item['answer']}]
-
+    
+    if isinstance(qa_pairs, dict):
+      qa_pairs = [qa_pairs]
+      
     conv = [{'role': 'user', 'content': user_content}]
     for qa in qa_pairs:
       conv.append({'role': 'user', 'content': qa['question']})

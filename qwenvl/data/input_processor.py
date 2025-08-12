@@ -151,7 +151,7 @@ class InputProcessor(ProcessorMixin):
     if text_only:
       vision_features = BatchFeature()
     else:
-      images, videos, fps = self.get_images_and_videos(messages, self.config)
+      images, videos, fps = self.get_images_and_videos(messages)
 
       vision_features = self._process_vision(
           images=images,

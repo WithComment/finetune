@@ -5,5 +5,9 @@
   "python.testing.unittestEnabled": false,
   "python.testing.pytestEnabled": true,
   "python-envs.pythonProjects": [],
-  "editor.formatOnSave": false
+  "editor.formatOnSave": false,
+  "files.exclude": {
+    "ms-swift/**": true,
+    "transformers/**": true
+  }
 }

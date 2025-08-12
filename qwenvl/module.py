@@ -155,7 +155,7 @@ def create_strategies(
   preprocess_strategies = []
   if rank == 0:
     preprocess_strategies.append(AddIdStrategy())
-    if 'mnist' not in data_args.dataset_use:
+    if 'fashion' not in data_args.dataset_use:
       preprocess_strategies.append(VerifyMediaStrategy(
           get_content_fn=cp.get_content,
           config=proc_args,

@@ -2,9 +2,11 @@
 
 # List of (dataset_name, system_prompt) tuples
 declare -a configs=(
-    "surgeryvid default"
-    "surgeryvid video"
-    "surgeryvid surgeryvid"
+    # "surgeryvid default"
+    # "surgeryvid video"
+    # "surgeryvid surgeryvid"
+    "fashion_final#1000 default"
+    "fashion_final#1000 video"
 )
 
 # Iterate over the configurations and call swift.sh

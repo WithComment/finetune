@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=64
 #SBATCH --gres=gpu:l40s:4
 #SBATCH --mem=0
-#SBATCH --time=12:00:00
+#SBATCH --time=1-00:00:00
 #SBATCH --output=logs/train/%j/%N.log
 #SBATCH --error=logs/train/%j/%N.err
 #SBATCH --open-mode=append
@@ -16,14 +16,18 @@ source ~/.bashrc
 module load cuda
 cd ~/finetune
 
-# export TRITON_CACHE_DIR=/dev/shm/triton_cache
-# mkdir -p /dev/shm/triton_cache
-
-# Accept dataset_name and system_prompt as command-line arguments
-dataset_name=$1
-system_prompt=$2
+# Accept dataset_path and system_prompt as command-line arguments
+system_prompt=${1:-"default"}
+model_path=${2:-"${CHECKPOINT_DIR}/InternVL3_8_Instruct"}
 
 mkdir -p /dev/shm/triton_cache
+
+# Add system prompt argument only if system_prompt is not empty
+if [[ -n "${system_prompt}" ]]; then
+    system_arg="--system ${HOME}/finetune/qwenvl/data/prompts/${system_prompt}.txt"
+else
+    system_arg=""
+fi
 
 TRITON_CACHE_DIR=/dev/shm/triton_cache \
 NPROC_PER_NODE=4 \
@@ -31,13 +35,16 @@ MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 LOG_LEVEL='INFO' \
+USE_HF='True' \
 swift sft \
+    --model ${model_path} \
+    ${system_arg} \
+    --output_dir "${CHECKPOINT_DIR}/$(basename ${model_path})_surgeryvid_train_${system_prompt}" \
+    --dataset "withcomment/surgeryvid_train" \
     --use_hf True \
-    --model /model-weights/Qwen2.5-VL-3B-Instruct \
+    --model_type internvl3 \
     --train_type full \
     --freeze_aligner False \
-    --system "${HOME}/finetune/qwenvl/data/prompts/${system_prompt}.txt" \
-    --dataset "withcomment/${dataset_name}" \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
     --packing True \
@@ -50,13 +57,12 @@ swift sft \
     --save_strategy 'steps' \
     --save_total_limit 1 \
     --logging_steps 1 \
-    --max_length 8196 \
-    --output_dir "${SCRATCH}/checkpoints/Qwen2_5_3_${dataset_name}_${system_prompt}" \
+    --max_length 16384 \
     --create_checkpoint_symlink True \
     --warmup_ratio 0.01 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 60 \
-    --deepspeed zero3 \
+    --deepspeed zero3_offload \
     --report_to wandb \
     --add_version False \
     --seed 903 \

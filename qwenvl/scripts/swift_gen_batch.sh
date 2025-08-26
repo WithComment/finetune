@@ -2,10 +2,17 @@
 
 # List of (dataset_name, system_prompt) tuples
 declare -a configs=(
-    "surgeryvid_test default Qwen2_5_7_surgeryvid_default/last"
-    "surgeryvid_test surgeryvid Qwen2_5_7_surgeryvid_default/last"
-    "surgeryvid_test video Qwen2_5_7_surgeryvid_video/last"
-    "surgeryvid_test surgeryvid Qwen2_5_7_surgeryvid_surgeryvid/last"
+    "surgeryvid_test#1000 default Qwen2_5_7_surgeryvid_default/last"
+    "surgeryvid_test#1000 default Qwen2_5_7_surgeryvid_v1_0/last"
+    "surgeryvid_test#1000 v1_0 Qwen2_5_7_surgeryvid_v1_0/last"
+    "surgeryvid_test#1000 v1_4 Qwen2_5_7_surgeryvid_v1_4/last"
+    # "surgeryvid_test#500 default Qwen2_5_7_surgeryvid_simple/last"
+    # "surgeryvid_test#500 default Qwen2_5_7_surgeryvid_v1_2/last"
+    # "surgeryvid_test#500 default Qwen2_5_7_surgeryvid_v2_2/last"
+    # "surgeryvid_test#500 default Qwen2_5_7_surgeryvid_v1_3/last"
+    # "surgeryvid_test#500 default Qwen2_5_7_surgeryvid_v2_3/last"
+    # "surgeryvid_test#500 default Qwen2_5_7_surgeryvid_generic/last"
+    # "surgeryvid_test#500 default Qwen2_5_7_surgeryvid_attention/last"
 )
 
 # Iterate over the configurations and call swift.sh

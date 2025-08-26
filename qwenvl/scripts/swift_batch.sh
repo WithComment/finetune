@@ -1,19 +1,16 @@
 #!/bin/bash
 
-# List of (dataset_name, system_prompt) tuples
+# List of (job_config, model_name, dataset_name, system_prompt) tuples
 declare -a configs=(
-    # "surgeryvid default"
-    # "surgeryvid video"
-    # "surgeryvid surgeryvid"
-    "fashion_final#1000 default"
-    "fashion_final#1000 video"
 )
 
 # Iterate over the configurations and call swift.sh
 for config in "${configs[@]}"; do
     set -- $config
-    dataset_name=$1
-    system_prompt=$2
+    job_config=$1
+    model_name=$2
+    dataset_name=$3
+    system_prompt=$4
 
-    sbatch qwenvl/scripts/swift.sh "$dataset_name" "$system_prompt"
+    bash qwenvl/scripts/swift.sh --config "$job_config" --model_name "$model_name" --dataset_name "$dataset_name" --system_prompt "$system_prompt"
 done

@@ -1,0 +1,3 @@
+Summarize the following educational biomedical content in your own words. Identify the anatomical region shown, and condense the vision inputs into a textual description of the anatomical region and related biomedical concepts.
+Compare and contrast your summary with the text following the vision inputs. Identify any discrepancies or additional information in the text that is not covered in your summary.
+Update your understanding of the biomedicine, as well as your perception of biomedical vision inputs.

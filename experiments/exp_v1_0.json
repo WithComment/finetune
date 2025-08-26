@@ -1,0 +1,19 @@
+{
+  "model_path_or_key": "/scratch/xiaowenz/checkpoints/Qwen2_5_3",
+  "b_size": 2,
+  "train_step_size": 10,
+  "train_n_samples": 50,
+  "val_step_size": 10,
+  "val_n_samples": 10,
+  "param_pattern": ".+language_model.+mlp.+weight$",
+  "proxy_fn": "accum_grad",
+  "align_fn": "cosine_alignment",
+  "max_length": 800,
+  "lr": 1e-05,
+  "optimizer": null,
+  "result": 0.08390624821186066,
+  "ds_name": "swift_path_vqa",
+  "ds_split": "train",
+  "sys_prompt": "/home/xiaowenz/finetune/qwenvl/data/prompts/v1_0.txt",
+  "seed": 42
+}

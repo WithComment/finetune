@@ -36,7 +36,7 @@ class ConversationMaker(ABC):
 
   def add_media_dir(self, media: str) -> str:
     '''Add media directory to the filename if media_dir is set.'''
-    if self.media_dir is not None:
+    if self.media_dir is not None and isinstance(media, str):
       return str(self.media_dir / media)
     return media
 
@@ -76,9 +76,11 @@ class TextConversationMaker(ConversationMaker):
 
 class VQACM(ConversationMaker):
 
-  def __init__(self, qa_list_field: str = None, **kwargs):
+  def __init__(self, qa_list_field: str = None, q_field: str = 'question', a_field: str = 'answer', **kwargs):
     super().__init__(**kwargs)
     self.qa_list_field = qa_list_field
+    self.q_field = q_field
+    self.a_field = a_field
 
   def __call__(self, item: dict[str, Any]) -> list[dict[str, Any]]:
     '''Create a VQA conversation from an item in a dataset.
@@ -100,16 +102,16 @@ class VQACM(ConversationMaker):
     if self.qa_list_field:
       qa_pairs = item[self.qa_list_field]
     else:
-      qa_pairs = [{'question': item['question'], 'answer': item['answer']}]
+      qa_pairs = [{'question': item[self.q_field], 'answer': item[self.a_field]}]
     
     if isinstance(qa_pairs, dict):
       qa_pairs = [qa_pairs]
       
     conv = [{'role': 'user', 'content': user_content}]
     for qa in qa_pairs:
-      conv.append({'role': 'user', 'content': qa['question']})
+      conv.append({'role': 'user', 'content': qa[self.q_field]})
       if self.for_training:
-        conv.append({'role': 'assistant', 'content': qa['answer']})
+        conv.append({'role': 'assistant', 'content': qa[self.a_field]})
     return conv
 
 
@@ -173,6 +175,12 @@ class MNISTCM(ConversationMaker):
 
 
 class CaptionCM(ConversationMaker):
+  PROMPTS = (
+    "Please describe the content shown in the visual content.",
+    "What do you observe in the vision input?",
+    "Provide a description of the visual input.",
+    "Please provide a caption for the vision input.",
+  )
   def __init__(self, field_name: str = 'caption', **kwargs):
     '''
     Args:
@@ -190,11 +198,15 @@ class CaptionCM(ConversationMaker):
     Returns:
       A dictionary containing the conversation.
     '''
-    if self.field_name not in item:
-      raise ValueError(f"Item must contain '{self.field_name}' field.")
+    if 'image' in item:
+      content = [{'image': item['image']}]
+    elif 'video' in item:
+      content = [{'video': item['video']}]
+    content.append({'text': random.choice(self.PROMPTS)})
 
-    conv = [{'role': 'user', 'content': item['image']}]
-    conv.append({'role': 'assistant', 'content': item[self.field_name]})
+    conv = [{'role': 'user', 'content': content}]
+    if self.for_training:
+      conv.append({'role': 'assistant', 'content': item[self.field_name]})
     return conv
 
 
@@ -281,12 +293,13 @@ class ConversationModifier(ABC):
   Always act on a list of conversations, and return a list of conversations
   '''
 
-  def __init__(self, prompts: list[str], idx: int = 0, role='system'):
+  def __init__(self, prompts: list[str], idx: int = 0, role='system', skip_type=[]):
     if isinstance(prompts, str):
       prompts = [prompts]
     self.prompts = prompts
     self.idx = idx
     self.role = role
+    self.skip_type = skip_type
 
   @abstractmethod
   def __call__(self, conversations: list[list[dict[str, Any]]]) -> list[list[dict[str, Any]]]:
@@ -361,6 +374,18 @@ class ConversationProcessor(ConversationMaker):
     self.modifiers = conversation_modifiers
     super().__init__(**kwargs)
 
+  @staticmethod
+  def merge_messages_from_same_role(conv: list[dict[str, str | list[dict[str, Any]]]]):
+    merged = []
+    for message in conv:
+      if isinstance(message['content'], str):
+        message['content'] = [{'text': message['content']}]
+      if merged and merged[-1]['role'] == message['role']:
+        merged[-1]['content'].extend(message['content'])
+      else:
+        merged.append(message)
+    return merged
+
   def __call__(self, item: list[dict[str, Any]]) -> list[dict[str, Any]]:
     '''
     Create a conversation from a list of items in a dataset and apply modifiers.
@@ -376,6 +401,8 @@ class ConversationProcessor(ConversationMaker):
 
     conversation = [self.maker(i) for i in item]
     for modifier in self.modifiers:
+      if 'type' in item[0] and item[0]['type'] in modifier.skip_type:
+        continue
       conversation = modifier(conversation)
-    # Flatten the list of conversations
-    return list(itertools.chain(*conversation))
+    conv = list(itertools.chain(*conversation))
+    return self.merge_messages_from_same_role(conv)

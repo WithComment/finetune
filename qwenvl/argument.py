@@ -44,12 +44,14 @@ class ProcessingArguments:
   """
   image_min_pixels: int = field(default=PATCH_SIZE * 64)
   image_max_pixels: int = field(default=PATCH_SIZE * 2048)
+  resize_img: bool = field(default=True)
   default_to_square: bool = field(default=False)
 
   video_min_pixels: int = field(default=PATCH_SIZE * 64)
   video_max_pixels: int = field(default=PATCH_SIZE * 512)
   video_max_frames: int = field(default=420)
   video_min_frames: int = field(default=4)
+  resize_vid: bool = field(default=True)
   base_interval: float = field(default=1.0)
   temporal_patch_size: int = field(
     default=2, metadata={"help": "Temporal patch size for video processing"})
@@ -69,6 +71,8 @@ class ProcessingArguments:
                             "help": "Padding side for text input, right pad when training, left pad when inference"})
   use_bf16: bool = field(default=False, metadata={
                          "help": "Use bfloat16 for training"})
+
+  for_training: bool | None = field(default=None)
 
   @property
   def media_params(self):

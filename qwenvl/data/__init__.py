@@ -33,8 +33,14 @@ avail_datasets = {
   },
   "path_vqa": {
     "ds_dir": f"{DATA_ROOT}/path_vqa/data/dataset",
-    "media_dir": None,
+    "media_dir": f"{DATA_ROOT}/path_vqa/data/images",
     "ds_key": "flaviagiammarino/path-vqa",
+    "cm": VQACM,
+  },
+  "swift_path_vqa": {
+    "ds_dir": None,
+    "media_dir": f"{DATA_ROOT}/path_vqa/data/images",
+    "ds_key": "withcomment/path_vqa",
     "cm": VQACM,
   },
   "vqa_rad": {
@@ -51,8 +57,8 @@ avail_datasets = {
   "openbiomedvid": {
     "ds_dir": f"{DATA_ROOT}/openbiomedvid/data/dataset",
     "media_dir": f"{DATA_ROOT}/openbiomedvid/data/vid_processed",
-    "ds_key": "withcomment/openbiomedvid",
-    "cm": OBVCM,
+    "ds_key": "connectthapa84/OpenBiomedVid",
+    "cm": VQACM,
     "qa_list_field": "qa_pairs",
   },
   "openbiomedvid_qa": {
@@ -65,7 +71,7 @@ avail_datasets = {
   "openbiomedvid_cap": {
     "ds_dir": f"{DATA_ROOT}/openbiomedvid_cap/data/dataset",
     "media_dir": f"{DATA_ROOT}/openbiomedvid/data/vid_processed",
-    "ds_key": "withcomment/openbiomedvid_cap",
+    "ds_key": "connectthapa84/OpenBiomedVid",
     "cm": CaptionCM,
   },
   "surgeryvid": {
@@ -121,5 +127,18 @@ avail_datasets = {
     "media_dir": None,
     "ds_key": "withcomment/medqa_mc",
     "cm": MCCM,
+  },
+  "mini_imagenet": {
+    "ds_dir": f"{DATA_ROOT}/mini_imagenet/data/dataset",
+    "media_dir": None,
+    "ds_key": "withcomment/mini_imagenet",
+    "cm": CaptionCM,
+  },
+  "vqa": {
+    "ds_dir": None,
+    "media_dir": None,
+    "ds_key": "withcomment/vqa_10k",
+    "cm": VQACM,
+    "a_field": 'label',
   },
 }

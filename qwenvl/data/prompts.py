@@ -7,6 +7,7 @@ SYS_PROMPTS = {
     "Examine the key features in this medical image, such as anatomical structures, abnormal shapes, and variations in density. Based your answer strictly on what you see.",
     "Analyze the pathological image. Focus on the most important visual evidence in the image and ground your answer on those evidence."
   ],
+  'v3_5': 'You are a helpful assistant.\nAs you answer the question, focus your attention on the object in question, and any objects it directly interacts with. Isolate key visual details.',
   'vqa_rad': [
     "Examine the key features in this radiological image, such as cell structures and tissue organization. Based your answer strictly on what you see.",
     "Analyze the radiological image. Focus on the most important visual evidence in the image and ground your answer on those evidence."
@@ -26,7 +27,31 @@ Apply this focused analysis of space and time to the video to find the precise e
 """,
   'spatial': "Focus your attention on the primary subject and any objects it directly interacts with. Isolate key visual details.",
   'temporal': "Focus your attention on the sequence of frames showing significant change. Prioritize the frames capturing the action's beginning, peak, and conclusion.",
-  'video': "Focus attention on the primary subject's main action. Prioritize the temporal sequence from the action's start to its conclusion, emphasizing the peak. Within this sequence, isolate the key visual details of the subject and its direct interactions."
+  'video': "Focus attention on the primary subject's main action. Prioritize the temporal sequence from the action's start to its conclusion, emphasizing the peak. Within this sequence, isolate the key visual details of the subject and its direct interactions.",
+  'surgeryvid_cft': [
+    """Consider the clinical application of the procedure shown in this surgical video. How could this knowledge be used in real-world situations?""",
+
+    """Perform an in-depth exploration of this surgical video and the following text. Go beyond the main procedural step and pay attention to the subtle anatomical changes, nuanced tissue handling, and instrument movements that occur throughout the sequence.""",
+
+    """Reflect on the procedural information presented in this video and the following text. Consider how they affect your current understanding and perspective on the topic.""",
+
+    """Engage creatively with this surgical video and the following text. How could this knowledge contribute to the development of new operative techniques? Highlight its unique procedural or anatomical features.""",
+
+    """Synthesize the information from the video and the following text into a single, concise summary of the surgical action.""",
+    
+    """Focus on the key procedural and anatomical features shown. Identify the essential steps and hallmark intraoperative cues that define the main action, ignoring incidental or unrelated movements.""",
+
+    """Place this surgical video and the following text in a broader anatomical and clinical context. Think about how this information connects to what you've learned previously.""",
+
+    """Critically analyze this surgical video not just for its procedural content, but for its technical execution and recording quality. Evaluate possible obstructions, camera limitations, or motion artifacts that could hinder interpretation. State whether the view is adequate for accurate procedural understanding.""",
+
+    # 9. Question-Based Learning (from Paul & Elder's Critical Thinking)
+    """Answer the following questions based on the video: 1. What is the primary surgical step shown? 2. Which anatomical structure is being addressed? 3. What are the key visual and motion characteristics? 4. What is the intended surgical outcome? 5. Are there any important secondary observations?""",
+
+    # 10. Comparative Learning (from Relational Frame Theory)
+    """Perform a comparative analysis. How do the surgical actions in this video align with the standard approach for this procedure? In what ways do they differ from alternative or less common surgical techniques for the same condition?"""
+      ]
+
 }
 
 USR_PROMPTS = {

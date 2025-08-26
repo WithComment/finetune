@@ -52,12 +52,18 @@ def create_module(
     ds = datasets.load_from_disk(
       avail_datasets[data_args.dataset_use]['ds_dir'])
 
+  ds = ds[data_args.split]
   for strategy in preprocess_strategies:
     logger.info(f"Applying strategy {strategy.__class__.__name__}")
     ds = strategy(ds)
-
-  # Note strategies act on all splits.
-  ds = ds[data_args.split]
+  
+  if isinstance(data_args.portion, float):
+    n_samples = int(len(ds) * data_args.portion)
+  elif isinstance(data_args.portion, int):
+    n_samples = data_args.portion
+  if n_samples < len(ds):
+    ds = ds.select(random.sample(range(len(ds)), n_samples))
+    
   if data_args.packing:
     bins = pack_dataset(ds, data_args.model_max_length)
   else:
@@ -69,7 +75,7 @@ def create_module(
     conv = [cp(item) for item in batch]
     return ip(conv)
 
-  if rank == 0:
+  if rank == 0 and isinstance(ip, InputProcessor):
     batch = ds[:1]
     conv = [cp(item[:2]) for item in batch]
     text = ip.get_text(conv, text_only=True)
@@ -102,16 +108,16 @@ def create_strategies(
   """
   Create preprocess strategies and conversation maker.
   """
-  assert (
-    (data_args.split == 'train' and not proc_args.add_generation_prompt)
-    or
-    (data_args.split != 'train' and proc_args.add_generation_prompt)
-  )
 
   ds_config = avail_datasets[data_args.dataset_use]
+  
+  if proc_args.for_training is not None:
+    for_training = proc_args.for_training
+  else:
+    for_training = data_args.split == 'train'
 
   base_cm = ds_config['cm'](
-    for_training=data_args.split == 'train',
+    for_training=for_training,
     **ds_config,
     **additional_kwargs
   )
@@ -168,6 +174,7 @@ def create_strategies(
         preprocess_strategies.append(GetNumTokensStrategy(cm=cp, processor=ip))
         preprocess_strategies.append(FilterStrategy(
           lambda x: x['num_tokens'] <= data_args.model_max_length))
-    preprocess_strategies.append(SaveStrategy(save_path=ds_config['ds_dir']))
+    if ds_config['ds_dir']:
+      preprocess_strategies.append(SaveStrategy(save_path=ds_config['ds_dir']))
 
   return preprocess_strategies, cp, ip

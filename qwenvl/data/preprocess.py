@@ -12,6 +12,7 @@ from qwenvl.data.input_processor import InputProcessor
 from qwenvl.data.packing import fast_best_fit_decreasing
 from qwenvl.data.utils import get_image, get_video_frames, smart_resize
 from qwenvl.utils import get_logger
+from qwen_vl_utils import fetch_video
 import tempfile
 
 logger = get_logger(__name__)
@@ -21,9 +22,9 @@ class PreprocessStrategy(ABC):
   num_proc: int = 32
   load_from_cache_file: bool = True
 
-  def __init__(self, num_proc: int = 32, load_from_cache: bool = True):
+  def __init__(self, num_proc: int = 32, load_from_cache_file: bool = True):
     self.num_proc = num_proc
-    self.load_from_cache_file = load_from_cache
+    self.load_from_cache_file = load_from_cache_file
 
   @abstractmethod
   def __call__(self, ds: datasets.Dataset):
@@ -86,7 +87,7 @@ class GetNumMediaTokensStrategy(PreprocessStrategy):
       for vid in videos:
         vid, _ = get_video_frames(vid, self.config, is_counting=True)
         nframes = vid.shape[0]
-        frame = vid[:1]
+        frame = vid[0]
         h, w, h_tokens, w_tokens = smart_resize(
           frame.shape[-2], frame.shape[-1],
           self.config.video_max_pixels,
@@ -117,8 +118,10 @@ class GetNumMediaTokensStrategy(PreprocessStrategy):
     )
     if isinstance(ds, datasets.DatasetDict):
       splits = [split for split in ds.values()]
+      logger.info(splits[0].features)
     else:
       splits = [ds]
+      logger.info(ds.features)
     total_media_tokens = sum(
       sum(split['num_media_tokens']) for split in splits)
     total_len = sum(len(split) for split in splits)

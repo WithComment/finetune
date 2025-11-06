@@ -1,0 +1,16 @@
+defaults:
+  - default
+  - base_scienceqa
+  - _self_
+
+modalities:
+  - text
+  - image
+input_format:
+  - image
+  - question
+
+_target_: src.data.science_qa.ScienceQABuilder
+path: derek-thomas/ScienceQA
+prob_with_context: 1.0
+prob_with_choices: 1.0

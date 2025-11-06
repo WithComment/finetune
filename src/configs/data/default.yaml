@@ -1,0 +1,10 @@
+defaults:
+  - base_data
+  - _self_
+
+_target_: src.data.data_builder.DataBuilder
+name: null
+split: 'train'
+streaming: false
+load_from_cache_file: true
+num_proc: 60

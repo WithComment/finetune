@@ -15,3 +15,4 @@ bash qwenvl/scripts/predict.sh vqa-rad test Qwen/Qwen2.5-VL-3B-Instruct-openbiom
 ```
 which will use the `vqa-rad` dataset from huggingface and the checkpoint trained on OpenBiomedVideo dataset.
 The output is located at `/projects/cft_vlm/datasets/<dataset_name>/results/<split>/<model_name_final_component>/results.jsonl`.
+

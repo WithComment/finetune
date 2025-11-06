@@ -1,0 +1,54 @@
+{
+  "model": {
+    "Qwen3-VL-2B-Instruct": {
+      "model_path": "Qwen/Qwen3-VL-2B-Instruct",
+      "use_custom_prompt": false,
+      "use_vllm": true,
+      "temperature": 0.7,
+      "max_new_tokens": 16384,
+      "repetition_penalty": 1.0,
+      "presence_penalty": 1.5,
+      "top_p": 0.8,
+      "top_k": 20
+    },
+    "Qwen3-VL-2B-Instruct-SQA-STC": {
+      "model_path": "/home/xiaowenz/finetune/outputs/Qwen3-VL-2B-Instruct/ScienceQA/251106/105215/model",
+      "use_custom_prompt": false,
+      "use_vllm": true,
+      "temperature": 0.7,
+      "max_new_tokens": 16384,
+      "repetition_penalty": 1.0,
+      "presence_penalty": 1.5,
+      "top_p": 0.8,
+      "top_k": 20
+    },
+    "Qwen3-VL-2B-Instruct-SQA-ST": {
+      "model_path": "/home/xiaowenz/finetune/outputs/Qwen3-VL-2B-Instruct/ScienceQA/251106/102845/model",
+      "use_custom_prompt": false,
+      "use_vllm": true,
+      "temperature": 0.7,
+      "max_new_tokens": 16384,
+      "repetition_penalty": 1.0,
+      "presence_penalty": 1.5,
+      "top_p": 0.8,
+      "top_k": 20
+    },
+    "Qwen3-VL-2B-Instruct-SQA": {
+      "model_path": "/home/xiaowenz/finetune/outputs/Qwen3-VL-2B-Instruct/ScienceQA/251106/105335/model",
+      "use_custom_prompt": false,
+      "use_vllm": true,
+      "temperature": 0.7,
+      "max_new_tokens": 16384,
+      "repetition_penalty": 1.0,
+      "presence_penalty": 1.5,
+      "top_p": 0.8,
+      "top_k": 20
+    }
+  },
+  "data": {
+    "ScienceQA_VAL": {
+      "class": "ImageMCQDataset",
+      "dataset": "ScienceQA_VAL"
+    }
+  }
+}

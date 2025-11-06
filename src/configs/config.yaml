@@ -1,0 +1,18 @@
+defaults:
+  - base_config
+  - trainer: default
+  - data: ScienceQA
+  - _self_
+
+hydra:
+  run:
+    dir: ${run_dir}
+
+model_path: Qwen/Qwen3-VL-2B-Instruct
+base_run_name: Qwen3-VL-2B-Instruct/ScienceQA
+base_run_dir: /scratch/xiaowenz/finetune/runs/${base_run_name}
+run_dir: ${base_run_dir}/${now:%y%m%d/%H%M%S}
+
+trainer:
+  run_name: ${base_run_name}/${now:%y%m%d/%H%M%S}
+  output_dir: ${run_dir}/model

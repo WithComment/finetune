@@ -1,0 +1,35 @@
+defaults:
+  - base_trainer
+  - _self_
+
+effective_batch_size: 16
+per_device_train_batch_size: 1
+max_length: 2048
+packing: false
+completion_loss_only: true
+num_train_epochs: 2.0
+max_steps: -1
+
+# Optimization
+lr: 5e-5
+lr_schedular_type: "cosine"
+warmup_ratio: 0.1
+weight_decay: 0.01
+optim: "adamw_torch"
+
+# Memory optimization
+dataloader_num_workers: 0
+group_by_length: false # If set to true we get ValueError: Can only automatically infer lengths for datasets whose items are dictionaries with an 'pixel_values' key
+gradient_checkpointing: true
+bf16: true
+deepspeed: /home/xiaowenz/finetune/src/scripts/zero2.json
+# deepspeed: /home/xiaowenz/finetune/src/scripts/zero3_offload.json
+# deepspeed: null
+dataset_num_proc: null
+
+# Saving and logging
+save_strategy: "steps"
+save_steps: 0.2
+save_total_limit: 3
+report_to: "wandb"
+logging_steps: 10

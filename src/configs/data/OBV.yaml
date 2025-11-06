@@ -1,0 +1,9 @@
+defaults:
+  - default
+  - base_obv
+  - _self_
+
+input_format: null
+_target_: src.data.openbiomedvid.OBVBuilder
+path: connectthapa84/OpenBiomedVid
+data_dir:

@@ -1,0 +1,9 @@
+defaults:
+  - ScienceQA
+  - _self_
+
+input_format:
+  - subject
+  - topic
+  - image
+  - question
